@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
 import { FallDetectorProvider } from '@/components/fall-detector-provider';
+import { ProfileStoreProvider } from '@/src/lib/profile-store-provider';
 
 /**
  * Root navigation. The whole app lives in dark mode — Northstar's environments
@@ -20,37 +21,39 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={DarkTheme}>
       <FallDetectorProvider>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: '#0b0e12' },
-          }}
-        >
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen
-            name="report-incident"
-            options={{
-              presentation: 'modal',
-              headerShown: false,
-              contentStyle: { backgroundColor: 'transparent' },
-            }}
-          />
-          <Stack.Screen
-            name="rescue"
-            options={{
-              presentation: 'modal',
-              headerShown: false,
-              contentStyle: { backgroundColor: 'transparent' },
-            }}
-          />
-          <Stack.Screen
-            name="triage"
-            options={{
+        <ProfileStoreProvider>
+          <Stack
+            screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: '#0b0e12' },
             }}
-          />
-        </Stack>
+          >
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen
+              name="report-incident"
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
+            <Stack.Screen
+              name="rescue"
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
+            <Stack.Screen
+              name="triage"
+              options={{
+                headerShown: false,
+                contentStyle: { backgroundColor: '#0b0e12' },
+              }}
+            />
+          </Stack>
+        </ProfileStoreProvider>
       </FallDetectorProvider>
       <StatusBar style="light" />
     </ThemeProvider>
