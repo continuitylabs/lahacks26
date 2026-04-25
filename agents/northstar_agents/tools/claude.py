@@ -14,9 +14,35 @@ from typing import Optional
 
 import anthropic
 from anthropic import AsyncAnthropic
+from pydantic import BaseModel
 
 from .. import config
 from ..schemas import IncidentBrief, MedicalCoordinatorResponse, Severity
+
+
+# uAgents Models are Pydantic V1; the Anthropic SDK's structured-output path
+# (messages.parse with output_format=...) generates V2 JSON schemas via
+# TypeAdapter and rejects V1 models. These V2 mirrors exist solely as the
+# output_format schema; we convert back to the V1 wire types before returning.
+
+
+class _IncidentBriefV2(BaseModel):
+    user_name: Optional[str] = None
+    latitude: float
+    longitude: float
+    location_description: str
+    injury_description: str
+    triage_findings: list[str]
+    severity_hints: Optional[str] = None
+
+
+class _MedicalAssessmentV2(BaseModel):
+    severity: Severity
+    urgency_score: int
+    rationale: str
+    immediate_actions: list[str]
+    monitoring_for: list[str]
+    summary_for_dispatch: str
 
 
 _client: Optional[AsyncAnthropic] = None
@@ -52,9 +78,12 @@ async def parse_incident(text: str) -> Optional[IncidentBrief]:
             max_tokens=1024,
             system=_PARSE_SYSTEM,
             messages=[{"role": "user", "content": text}],
-            output_format=IncidentBrief,
+            output_format=_IncidentBriefV2,
         )
-        return msg.parsed_output
+        parsed = msg.parsed_output
+        if parsed is None:
+            return None
+        return IncidentBrief(**parsed.model_dump())
     except (anthropic.APIError, ValueError):
         return None
 
@@ -85,9 +114,6 @@ async def classify_severity(
         f"On-device triage findings:\n{findings_block}"
     )
 
-    class _ClassifierShape(MedicalCoordinatorResponse):
-        pass
-
     try:
         msg = await client.messages.parse(
             model=config.CLAUDE_MODEL,
@@ -95,13 +121,15 @@ async def classify_severity(
             thinking={"type": "adaptive"},
             system=_SEVERITY_SYSTEM,
             messages=[{"role": "user", "content": user_msg}],
-            output_format=_ClassifierShape,
+            output_format=_MedicalAssessmentV2,
         )
-        out = msg.parsed_output
-        if out is None:
+        parsed = msg.parsed_output
+        if parsed is None:
             return None
-        out.request_id = request_id
-        return out
+        return MedicalCoordinatorResponse(
+            request_id=request_id,
+            **parsed.model_dump(),
+        )
     except (anthropic.APIError, ValueError):
         return None
 

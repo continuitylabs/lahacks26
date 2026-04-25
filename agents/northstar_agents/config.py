@@ -39,6 +39,9 @@ MEDICAL_COORDINATOR_SEED = get(
 CONTACT_ORCHESTRATOR_SEED = get(
     "CONTACT_ORCHESTRATOR_SEED", "northstar-contact-orchestrator-seed-CHANGE-ME"
 )
+PHONE_AGENT_SEED = get(
+    "PHONE_AGENT_SEED", "northstar-phone-agent-seed-CHANGE-ME"
+)
 
 
 # Local Bureau ports
@@ -46,6 +49,7 @@ RESCUE_COORDINATOR_PORT = int(get("RESCUE_COORDINATOR_PORT", "8000") or "8000")
 LOCATION_SCOUT_PORT = int(get("LOCATION_SCOUT_PORT", "8001") or "8001")
 MEDICAL_COORDINATOR_PORT = int(get("MEDICAL_COORDINATOR_PORT", "8002") or "8002")
 CONTACT_ORCHESTRATOR_PORT = int(get("CONTACT_ORCHESTRATOR_PORT", "8003") or "8003")
+PHONE_AGENT_PORT = int(get("PHONE_AGENT_PORT", "8004") or "8004")
 
 
 # Anthropic
@@ -81,6 +85,7 @@ _SEED_BY_ROLE: dict[str, str | None] = {
     "location_scout": LOCATION_SCOUT_SEED,
     "medical_coordinator": MEDICAL_COORDINATOR_SEED,
     "contact_orchestrator": CONTACT_ORCHESTRATOR_SEED,
+    "phone_agent": PHONE_AGENT_SEED,
 }
 
 

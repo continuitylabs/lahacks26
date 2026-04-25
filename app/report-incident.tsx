@@ -125,8 +125,11 @@ export default function ReportIncident() {
 
         <Pressable
           onPress={() => {
-            // TODO: navigate to the triage camera once wired up.
-            router.back();
+            // The triage camera flow lands here later. For now we skip
+            // straight to the agent network: the rescue screen fires a
+            // /report POST to the Phone Agent (which forwards over the
+            // Fetch.ai Chat Protocol) and renders the markdown reply.
+            router.replace('/rescue');
           }}
           style={({ pressed }) => ({
             borderRadius: 999,

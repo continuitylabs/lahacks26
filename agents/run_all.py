@@ -33,6 +33,7 @@ from northstar_agents import (
     contact_orchestrator,
     location_scout,
     medical_coordinator,
+    phone_agent,
     rescue_coordinator,
 )
 from northstar_agents.test_client import DEMO_PROMPT, make_test_client
@@ -48,6 +49,11 @@ _AGENT_NAMES: list[tuple[str, str]] = [
     ("Medical Coordinator",  "medical_coordinator"),
     ("Contact Orchestrator", "contact_orchestrator"),
     ("Rescue Coordinator",   "rescue_coordinator"),
+    # Phone Agent is the local proxy the Expo app POSTs to. It speaks the
+    # Chat Protocol to the coordinator, so app traffic exercises the same
+    # path as ASI:One. Boots last so the coordinator is reachable before
+    # the user can fire a /report call.
+    ("Phone Agent",          "phone_agent"),
 ]
 
 
@@ -69,6 +75,8 @@ def _print_addresses() -> None:
     print(f"    └─ port {config.MEDICAL_COORDINATOR_PORT}")
     print(f"  Contact Orchestrator  {contact_orchestrator.agent.address}")
     print(f"    └─ port {config.CONTACT_ORCHESTRATOR_PORT}")
+    print(f"  Phone Agent           {phone_agent.agent.address}")
+    print(f"    └─ port {config.PHONE_AGENT_PORT}  (local-only; POST /report from the app)")
     print(_BAR)
 
 
@@ -105,6 +113,9 @@ def _print_inspector_urls() -> None:
     print()
     print(" Then test from ASI:One:")
     print(f"   https://asi1.ai  →  paste {rescue_coordinator.agent.address}")
+    print()
+    print(" Or test from the Expo app (no Agentverse round-trip needed):")
+    print(f"   POST http://127.0.0.1:{config.PHONE_AGENT_PORT}/report")
     print(_BAR)
 
 
@@ -195,6 +206,10 @@ def run_bureau(smoke_test: bool, prompt: str | None) -> None:
     bureau.add(medical_coordinator.agent)
     bureau.add(contact_orchestrator.agent)
     bureau.add(rescue_coordinator.agent)
+    # Phone Agent isn't useful in --local mode (Bureau doesn't expose REST
+    # per-agent), but include it so its address registers in the registry —
+    # keeps the rescue coordinator's lookups consistent across modes.
+    bureau.add(phone_agent.agent)
     if smoke_test:
         bureau.add(make_test_client(rescue_coordinator.agent.address, prompt or DEMO_PROMPT))
     bureau.run()

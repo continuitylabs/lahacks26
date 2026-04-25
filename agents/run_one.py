@@ -15,6 +15,7 @@ _MODULES: dict[str, str] = {
     "location_scout": "northstar_agents.location_scout",
     "medical_coordinator": "northstar_agents.medical_coordinator",
     "contact_orchestrator": "northstar_agents.contact_orchestrator",
+    "phone_agent": "northstar_agents.phone_agent",
 }
 
 

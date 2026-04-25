@@ -92,6 +92,7 @@ def main() -> None:
         ("Location Scout",       config.LOCATION_SCOUT_SEED,       "scout",    config.LOCATION_SCOUT_PORT),
         ("Medical Coordinator",  config.MEDICAL_COORDINATOR_SEED,  "medical",  config.MEDICAL_COORDINATOR_PORT),
         ("Contact Orchestrator", config.CONTACT_ORCHESTRATOR_SEED, "contact",  config.CONTACT_ORCHESTRATOR_PORT),
+        ("Phone Agent",          config.PHONE_AGENT_SEED,          "phone",    config.PHONE_AGENT_PORT),
     ]
     for label, seed, _, port in agents:
         if not seed:
