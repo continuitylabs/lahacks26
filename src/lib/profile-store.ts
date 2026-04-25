@@ -168,8 +168,17 @@ async function persist(next: ProfileState): Promise<ProfileState> {
   return next;
 }
 
+/**
+ * `setProfile` accepts partial patches for nested objects too — the store
+ * deep-merges `emergencyContact` so callers can update one field at a
+ * time without reading the other from a (potentially stale) React snapshot.
+ */
+export type ProfilePatch = Partial<Omit<Profile, 'emergencyContact'>> & {
+  emergencyContact?: Partial<EmergencyContact>;
+};
+
 export async function setProfile(
-  patch: Partial<Profile>
+  patch: ProfilePatch
 ): Promise<ProfileState> {
   const current = await loadProfileState();
   const next: ProfileState = {
@@ -178,12 +187,12 @@ export async function setProfile(
       ...current.profile,
       ...patch,
       // Deep-merge nested object so partial patches preserve untouched fields.
-      ...(patch.emergencyContact && {
-        emergencyContact: {
-          ...current.profile.emergencyContact,
-          ...patch.emergencyContact,
-        },
-      }),
+      // The spread of `patch` above may leave emergencyContact as Partial<EmergencyContact>;
+      // the conditional below always produces the full EmergencyContact shape.
+      emergencyContact: {
+        ...current.profile.emergencyContact,
+        ...(patch.emergencyContact ?? {}),
+      },
     },
   };
   return persist(next);

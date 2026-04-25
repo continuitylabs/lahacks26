@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform } from 'react-native';
 import Animated, {
   type AnimatedStyle,
@@ -31,7 +31,6 @@ const C = {
   faint: 'rgba(245,239,228,0.4)',
   star: '#F0B86E',
   edge: 'rgba(255,255,255,0.18)',
-  edgeStrong: 'rgba(255,255,255,0.28)',
   bad: 'rgba(229,72,77,0.6)',
 };
 
@@ -239,6 +238,18 @@ function IdentityCard() {
     pulse.trigger();
   };
 
+  const commitNameRef = useRef(commitName);
+  const commitAgeRef = useRef(commitAge);
+  commitNameRef.current = commitName;
+  commitAgeRef.current = commitAge;
+  useEffect(
+    () => () => {
+      commitNameRef.current();
+      commitAgeRef.current();
+    },
+    []
+  );
+
   if (!loaded) return <SkeletonCard />;
 
   return (
@@ -287,7 +298,7 @@ function EmergencyContactCard() {
   const commitName = () => {
     const next = name.trim();
     if (next === ec.name) return;
-    setProfile({ emergencyContact: { name: next, phone: ec.phone } });
+    setProfile({ emergencyContact: { name: next } });
     pulse.trigger();
   };
 
@@ -295,9 +306,21 @@ function EmergencyContactCard() {
     const next = sanitizePhone(phone);
     if (next === ec.phone) return;
     setPhone(next);
-    setProfile({ emergencyContact: { name: ec.name, phone: next } });
+    setProfile({ emergencyContact: { phone: next } });
     pulse.trigger();
   };
+
+  const commitNameRef = useRef(commitName);
+  const commitPhoneRef = useRef(commitPhone);
+  commitNameRef.current = commitName;
+  commitPhoneRef.current = commitPhone;
+  useEffect(
+    () => () => {
+      commitNameRef.current();
+      commitPhoneRef.current();
+    },
+    []
+  );
 
   const phoneInvalid = phone.length > 0 && phoneDigitCount(phone) < PHONE_MIN_DIGITS;
 
@@ -349,6 +372,15 @@ function MedicalNotesCard() {
     setProfile({ medicalNotes: next });
     pulse.trigger();
   };
+
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  useEffect(
+    () => () => {
+      commitRef.current();
+    },
+    []
+  );
 
   if (!loaded) return <SkeletonCard />;
 

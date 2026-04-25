@@ -6,7 +6,7 @@ import {
   setProfile as persistProfile,
   updateSession as persistSession,
   clearSession as persistClearSession,
-  type Profile,
+  type ProfilePatch,
   type ProfileState,
   type Session,
 } from '@/src/lib/profile-store';
@@ -15,7 +15,7 @@ type ProfileStoreContextValue = {
   state: ProfileState;
   /** False until the first AsyncStorage read completes. */
   loaded: boolean;
-  setProfile: (patch: Partial<Profile>) => void;
+  setProfile: (patch: ProfilePatch) => void;
   updateSession: (patch: Partial<Session>) => void;
   clearSession: () => void;
 };
@@ -38,7 +38,7 @@ export function ProfileStoreProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const setProfile = useCallback((patch: Partial<Profile>) => {
+  const setProfile = useCallback((patch: ProfilePatch) => {
     void persistProfile(patch).then((next) => setState(next));
   }, []);
 
