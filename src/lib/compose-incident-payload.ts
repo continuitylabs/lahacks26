@@ -55,6 +55,10 @@ export function composeIncidentPayload(
     conditionSummary,
     heartRateBpm,
     emergencyContact,
+    // Twilio dispatch is opt-in per the agent-side convention. The user
+    // upgrades the call by replying `call now` in the Chat Protocol; the
+    // app never authorizes it implicitly. Source from a future profile
+    // toggle when we add a "Have Northstar call" UI affordance.
     placeCall: false,
   };
 }

@@ -255,6 +255,11 @@ function IdentityCard() {
     pulse.trigger();
   };
 
+  // Latest-closure ref ladder: the unmount effect's empty-deps cleanup
+  // must call the *current* commit closures (so it sees the latest input
+  // values), not the ones captured at first render. Each commit function
+  // is idempotent on no-op (early-return when value is unchanged), so
+  // strict-mode double-invoke and tab-change cleanups stay quiet.
   const commitNameRef = useRef(commitName);
   const commitAgeRef = useRef(commitAge);
   commitNameRef.current = commitName;
