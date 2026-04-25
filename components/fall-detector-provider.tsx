@@ -44,7 +44,10 @@ export function FallDetectorProvider({ children }: { children: ReactNode }) {
 
   const handleConfirm = useCallback(() => {
     setAlertVisible(false);
-    router.replace('/triage');
+    // push (not replace) so the underlying (tabs) route stays beneath us in
+    // the stack — otherwise the incident flow's Close / Done buttons end up
+    // dispatching GO_BACK / POP_TO_TOP on a depth-1 stack and throwing.
+    router.push('/triage');
   }, [router]);
 
   const value = useMemo<FallDetectorContextValue>(() => ({ simulate }), [simulate]);
