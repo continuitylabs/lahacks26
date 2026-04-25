@@ -78,7 +78,7 @@ export default function Info() {
           <Layer
             chip="ZETIC · ON-DEVICE"
             title="Triage"
-            body="Point the camera at the wound. A quantized vision model classifies bleeding, fracture signs, consciousness — frame by frame, no signal needed."
+            body="Rear camera + flash capture a fingertip PPG waveform offline, giving Northstar a quick pulse, SpO2 estimate, and blood-pressure trend before rescue coordination begins."
           />
           <Layer
             chip="FETCH.AI · AGENTVERSE"

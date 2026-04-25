@@ -104,7 +104,7 @@ export default function ReportIncident() {
           <Step
             number="1"
             title="Triage"
-            body="Point the camera at the injury. The on-device vision model classifies severity in real time."
+            body="Cover the rear camera and flash with your fingertip. Northstar reads a pulse waveform on-device to estimate oxygen saturation and blood pressure trend."
             chip="ZETIC"
           />
           <Step
@@ -125,11 +125,7 @@ export default function ReportIncident() {
 
         <Pressable
           onPress={() => {
-            // The triage camera flow lands here later. For now we skip
-            // straight to the agent network: the rescue screen fires a
-            // /report POST to the Phone Agent (which forwards over the
-            // Fetch.ai Chat Protocol) and renders the markdown reply.
-            router.replace('/rescue');
+            router.replace('/triage');
           }}
           style={({ pressed }) => ({
             borderRadius: 999,

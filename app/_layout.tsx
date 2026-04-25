@@ -40,6 +40,13 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: 'transparent' },
           }}
         />
+        <Stack.Screen
+          name="triage"
+          options={{
+            headerShown: false,
+            contentStyle: { backgroundColor: '#0b0e12' },
+          }}
+        />
       </Stack>
       <StatusBar style="light" />
     </ThemeProvider>
