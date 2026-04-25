@@ -13,8 +13,9 @@ import Animated, {
 
 import { GlassCard } from '@/components/glass-card';
 import { useCurrentLocation } from '@/hooks/use-current-location';
-import { getMockVitals } from '@/src/lib/mock-vitals';
+import { composeIncidentPayload } from '@/src/lib/compose-incident-payload';
 import { reportIncident, type ReportResult } from '@/src/lib/northstar';
+import { useProfileState } from '@/src/lib/profile-store-provider';
 import { Pressable, Text, View } from '@/src/tw';
 
 const SERIF =
@@ -53,32 +54,37 @@ type Phase =
 export default function Rescue() {
   const router = useRouter();
   const location = useCurrentLocation();
+  const { state, loaded, updateSession } = useProfileState();
   const [phase, setPhase] = useState<Phase>({ kind: 'pending' });
   const fired = useRef(false);
 
-  // Hold off until location resolves (granted or denied → both have coords).
-  const ready = location.status !== 'pending';
+  // Hold off until location resolves AND the profile store has hydrated.
+  const ready = location.status !== 'pending' && loaded;
 
   useEffect(() => {
     if (!ready || fired.current) return;
     fired.current = true;
-    const v = getMockVitals();
-    reportIncident({
-      userName: v.userName,
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
-      conditionSummary: v.conditionSummary,
-      heartRateBpm: v.heartRateBpm,
-      emergencyContact: v.emergencyContact,
-    })
-      .then((result) => setPhase({ kind: 'success', result }))
+    const payload = composeIncidentPayload(
+      state,
+      location.status === 'granted' ? location.coords : null
+    );
+    reportIncident(payload)
+      .then((result) => {
+        setPhase({ kind: 'success', result });
+        updateSession({
+          lastReportMarkdown: {
+            markdown: result.markdown,
+            capturedAt: Date.now(),
+          },
+        });
+      })
       .catch((err: unknown) =>
         setPhase({
           kind: 'error',
           message: err instanceof Error ? err.message : String(err),
         })
       );
-  }, [ready, location.coords.latitude, location.coords.longitude]);
+  }, [ready, state, location.status, location.coords.latitude, location.coords.longitude, updateSession]);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.void }}>
