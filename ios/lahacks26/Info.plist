@@ -57,6 +57,10 @@
     <string>Allow $(PRODUCT_NAME) to access your location</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Northstar uses your location to guide rescue to you when you need help.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Northstar listens to your voice so you can ask the on-device guide hands-free.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Northstar transcribes your voice on-device so the guide can answer you.</string>
     <key>NSUserActivityTypes</key>
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>

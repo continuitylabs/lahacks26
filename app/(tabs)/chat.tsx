@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -10,6 +10,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlassCard } from '@/components/glass-card';
+// Speech I/O temporarily disabled to isolate Zetic load crash.
+// import { useSpeechOutput } from '@/hooks/use-speech-output';
+// import { useVoiceInput } from '@/hooks/use-voice-input';
 import { useZeticChat } from '@/hooks/use-zetic-chat';
 import { Pressable, Text, TextInput, View } from '@/src/tw';
 
@@ -51,6 +54,24 @@ export default function Chat() {
   const insets = useSafeAreaInsets();
   const bottomPad = TAB_BAR_HEIGHT + Math.max(insets.bottom, 16);
 
+  // Speech I/O stubbed out — these no-op so the existing UI bindings still
+  // type-check, but no native speech modules are touched.
+  const voice = {
+    state: 'idle' as 'idle' | 'requesting' | 'listening' | 'error',
+    transcript: '',
+    error: null as { code?: string; message: string } | null,
+    start: () => {},
+    stop: () => {},
+    cancel: () => {},
+  };
+  const speech = {
+    enabled: false,
+    isSpeaking: false,
+    speak: (_text: string) => {},
+    stop: () => {},
+    toggleEnabled: () => {},
+  };
+
   useEffect(() => {
     load();
   }, [load]);
@@ -61,6 +82,10 @@ export default function Chat() {
 
   const ready = status.kind === 'ready';
   const canSend = ready && !isGenerating && input.trim().length > 0;
+  const isListening = false;
+  const canVoice = false;
+
+  const toggleVoice = useCallback(() => {}, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
@@ -110,19 +135,55 @@ export default function Chat() {
             </Text>
           </View>
 
-          <Pressable
-            onPress={clear}
-            disabled={isGenerating || messages.length === 0}
-            style={({ pressed }) => ({
-              opacity: messages.length === 0 || isGenerating ? 0.3 : pressed ? 0.6 : 1,
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: C.edge,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-            })}
-          >
-            <Text
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Pressable
+              onPress={speech.toggleEnabled}
+              style={({ pressed }) => ({
+                opacity: pressed ? 0.6 : 1,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: speech.enabled
+                  ? speech.isSpeaking
+                    ? C.star
+                    : C.edge
+                  : C.edge,
+                backgroundColor: speech.isSpeaking
+                  ? 'rgba(240,184,110,0.14)'
+                  : 'transparent',
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+              })}
+            >
+              <Text
+                selectable={false}
+                style={{
+                  fontFamily: MONO,
+                  color: speech.enabled
+                    ? speech.isSpeaking
+                      ? C.star
+                      : C.muted
+                    : C.faint,
+                  fontSize: 10,
+                  letterSpacing: 2,
+                }}
+              >
+                {speech.enabled ? (speech.isSpeaking ? 'SPEAKING' : 'VOICE') : 'MUTED'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={clear}
+              disabled={isGenerating || messages.length === 0}
+              style={({ pressed }) => ({
+                opacity: messages.length === 0 || isGenerating ? 0.3 : pressed ? 0.6 : 1,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: C.edge,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+              })}
+            >
+              <Text
               selectable={false}
               style={{
                 fontFamily: MONO,
@@ -134,6 +195,7 @@ export default function Chat() {
               CLEAR
             </Text>
           </Pressable>
+          </View>
         </View>
 
         <RNScrollView
@@ -166,6 +228,21 @@ export default function Chat() {
             gap: 8,
           }}
         >
+          {voice.state === 'error' && voice.error ? (
+            <Text
+              selectable={false}
+              style={{
+                fontFamily: MONO,
+                color: '#E5484D',
+                fontSize: 10,
+                letterSpacing: 1.6,
+                paddingHorizontal: 4,
+              }}
+            >
+              {voice.error.message}
+            </Text>
+          ) : null}
+
           <View
             style={{
               flexDirection: 'row',
@@ -174,7 +251,7 @@ export default function Chat() {
               borderRadius: 24,
               borderCurve: 'continuous',
               borderWidth: 1,
-              borderColor: C.edge,
+              borderColor: isListening ? C.star : C.edge,
               backgroundColor: C.glass,
               paddingHorizontal: 14,
               paddingVertical: 10,
@@ -183,9 +260,15 @@ export default function Chat() {
             <TextInput
               value={input}
               onChangeText={setInput}
-              placeholder={ready ? 'Ask Northstar…' : 'Loading model…'}
+              placeholder={
+                isListening
+                  ? 'Listening…'
+                  : ready
+                    ? 'Ask Northstar…'
+                    : 'Loading model…'
+              }
               placeholderTextColor={C.faint}
-              editable={ready && !isGenerating}
+              editable={ready && !isGenerating && !isListening}
               multiline
               style={{
                 flex: 1,
@@ -195,6 +278,27 @@ export default function Chat() {
                 paddingVertical: 4,
               }}
             />
+
+            {!isGenerating ? (
+              <Pressable
+                onPress={toggleVoice}
+                disabled={!canVoice && !isListening}
+                style={({ pressed }) => ({
+                  opacity:
+                    !canVoice && !isListening ? 0.35 : pressed ? 0.7 : 1,
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: isListening ? C.star : 'transparent',
+                  borderWidth: 1,
+                  borderColor: isListening ? C.star : C.edge,
+                })}
+              >
+                <MicGlyph color={isListening ? C.bg : C.muted} />
+              </Pressable>
+            ) : null}
 
             {isGenerating ? (
               <Pressable
@@ -357,6 +461,39 @@ function Empty() {
         Runs entirely on-device. No signal needed. Ask first-aid, navigation,
         or weather questions and the model answers offline.
       </Text>
+    </View>
+  );
+}
+
+function MicGlyph({ color }: { color: string }) {
+  return (
+    <View style={{ width: 14, height: 18, alignItems: 'center' }}>
+      <View
+        style={{
+          width: 8,
+          height: 11,
+          borderRadius: 4,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          marginTop: 2,
+          width: 12,
+          height: 1.5,
+          borderRadius: 1,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          marginTop: 1,
+          width: 6,
+          height: 1.5,
+          borderRadius: 1,
+          backgroundColor: color,
+        }}
+      />
     </View>
   );
 }
