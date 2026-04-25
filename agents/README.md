@@ -49,11 +49,14 @@ shows up in ASI:One the moment you start it with `AGENTVERSE_API_KEY` set.
 cd agents
 python -m venv .venv && source .venv/bin/activate     # or pyenv / uv / pipx
 pip install -r requirements.txt
-cp .env.example .env
 ```
 
-Open `.env` and fill in the keys you have. **Every key is optional** —
-the system degrades gracefully:
+Env vars are loaded from **two places** in this order — first writer wins:
+
+1. `agents/.env` (Python-side config)
+2. `.env.local` at the repo root (shared with the Expo app)
+
+Either is fine. **Every key is optional** — the system degrades gracefully:
 
 | Missing | Effect |
 |---|---|
@@ -62,14 +65,73 @@ the system degrades gracefully:
 | `ELEVENLABS_API_KEY` | Returns the script as text only, no MP3 |
 | `TWILIO_*` | "Call myself" path still works; "Have Northstar call" returns failed |
 
-To run:
+## Running it
 
 ```bash
-python run_all.py
+python check_setup.py                    # validate env + print expected addresses
+python run_all.py                        # production: each agent in its own process, Agentverse-routed
+python run_all.py --local                # offline: single Bureau, no Agentverse
+python run_all.py --local --smoke-test   # offline + test client fires a sample chat
 ```
 
-The four agents start in one Bureau on ports 8000–8003. Their addresses
-print to stdout — copy the **Rescue Coordinator** address into ASI:One.
+**Default (multiprocess) mode** spawns each agent as its own subprocess on
+its own port (8000–8003). uAgents prints an inspector URL for each agent
+on startup; click each one once (while logged into Agentverse) to register
+that agent's mailbox slot. After that, ASI:One can route messages.
+
+> **Why not Bureau for the Agentverse path?** The Agentverse inspector
+> doesn't support Bureaus — it expects one agent per HTTP server. Our
+> default multiprocess layout matches what the inspector expects.
+
+**`--local` mode** runs all four agents in a single Bureau, in one process,
+with no Agentverse routing. The smoke-test client lives here.
+
+## Testing just the Agentverse layer
+
+You don't need Anthropic, ElevenLabs, or Twilio keys to verify that the
+chat-protocol + Agentverse plumbing works. With only `AGENTVERSE_API_KEY`
+set:
+
+**1. Static check.** `python check_setup.py` reads your env, prints the
+deterministic addresses your seeds map to, and shows the Agentverse profile
+URLs. No network calls.
+
+**2. Multiprocess + inspector flow.** `python run_all.py` spawns each
+agent as its own subprocess. Each one prints its own inspector URL. While
+logged into Agentverse, click each URL once to register the corresponding
+mailbox slot. After that, the agents stay registered across runs; you don't
+have to click again. Once all four are claimed, you can chat with the
+rescue coordinator from [asi1.ai](https://asi1.ai).
+
+**3. End-to-end offline smoke test.** `python run_all.py --local --smoke-test`
+spins up the network plus an in-process test client that fires this prompt
+at the Rescue Coordinator on startup:
+
+> *"I just took a hard fall mountain biking on the Backbone Trail near
+> mile marker 7.2 (34.0848°N, -118.7798°W). I'm bleeding from my left
+> forearm but conscious. No head trauma. My name is Jake."*
+
+Within a few seconds you'll see:
+
+```
+[SmokeTest] sending sample chat to coordinator…
+[Coordinator] chat from agent1q…  (218 chars, place_call=False)
+[Coordinator] req=… dispatched to scout + medical
+[Scout]       req=… → replied
+[Medical]     req=… → moderate (ESI 3)        # heuristic fallback if no Claude
+[Contact]     req=… → status=drafted          # template script if no Claude
+[Coordinator] final reply sent → agent1q…
+
+═══════════════════════════════════════════════════════════════
+  ✓  Coordinator replied — chat protocol round-trip succeeded
+═══════════════════════════════════════════════════════════════
+# 🌟 Northstar Rescue Coordination
+…
+```
+
+Pass a different prompt with `--prompt "..."`. Smoke-test mode runs
+fully in-process and skips Agentverse entirely — useful when you don't
+have internet or want to verify the agent logic without touching ASI:One.
 
 ## Deliverables checklist
 

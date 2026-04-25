@@ -21,13 +21,22 @@ from .schemas import (
 from .tools import overpass, weather
 
 
-agent = Agent(
-    name="northstar_location_scout",
-    seed=config.LOCATION_SCOUT_SEED,
-    port=config.LOCATION_SCOUT_PORT,
-    endpoint=[f"http://127.0.0.1:{config.LOCATION_SCOUT_PORT}/submit"],
-    mailbox=bool(config.AGENTVERSE_API_KEY),
-)
+# `endpoint=` and `mailbox=True` are mutually exclusive in uAgents — passing
+# both silently disables mailbox. Pick exactly one based on whether we have
+# an Agentverse API key.
+_use_mailbox = bool(config.AGENTVERSE_API_KEY)
+_agent_kwargs: dict = {
+    "name": "northstar_location_scout",
+    "seed": config.LOCATION_SCOUT_SEED,
+    "port": config.LOCATION_SCOUT_PORT,
+}
+if _use_mailbox:
+    _agent_kwargs["mailbox"] = True
+else:
+    _agent_kwargs["endpoint"] = [
+        f"http://127.0.0.1:{config.LOCATION_SCOUT_PORT}/submit"
+    ]
+agent = Agent(**_agent_kwargs)
 
 
 def _extraction_recommendation(

@@ -8,10 +8,15 @@ from typing import Optional
 from dotenv import load_dotenv
 
 
-# Load .env once at import time. Looks at the agents/ directory parent of this file.
-_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
-if _ENV_PATH.exists():
-    load_dotenv(_ENV_PATH)
+# Load env files at import time. We check, in order:
+#   1. agents/.env                (Python-side specific config)
+#   2. <repo root>/.env.local     (shared with the Expo app)
+# Later files don't override earlier ones — first writer wins per key.
+_AGENTS_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = _AGENTS_ROOT.parent
+for _candidate in (_AGENTS_ROOT / ".env", _REPO_ROOT / ".env.local"):
+    if _candidate.exists():
+        load_dotenv(_candidate, override=False)
 
 
 def get(name: str, default: Optional[str] = None) -> Optional[str]:
@@ -65,10 +70,18 @@ AGENTVERSE_API_KEY = get("AGENTVERSE_API_KEY")
 
 
 # ── Address registry ────────────────────────────────────────────────────────
-# Populated at startup by run_all.py once each Agent's address is known.
-# Specialists publish their address here so the coordinator can reach them.
+# Addresses are deterministic from seeds, so we compute them lazily on first
+# request — no startup ordering required, and the coordinator can resolve
+# specialist addresses even when each agent runs in its own subprocess.
 
 _addresses: dict[str, str] = {}
+
+_SEED_BY_ROLE: dict[str, str | None] = {
+    "rescue_coordinator": RESCUE_COORDINATOR_SEED,
+    "location_scout": LOCATION_SCOUT_SEED,
+    "medical_coordinator": MEDICAL_COORDINATOR_SEED,
+    "contact_orchestrator": CONTACT_ORCHESTRATOR_SEED,
+}
 
 
 def set_address(role: str, address: str) -> None:
@@ -77,10 +90,13 @@ def set_address(role: str, address: str) -> None:
 
 def address(role: str) -> str:
     if role not in _addresses:
-        raise RuntimeError(
-            f"Address for '{role}' not registered yet. "
-            "Did you start the Bureau before sending requests?"
-        )
+        seed = _SEED_BY_ROLE.get(role)
+        if not seed:
+            raise RuntimeError(f"No seed configured for role '{role}'")
+        # Lazy import so importing config doesn't pull all of uagents.
+        from uagents import Agent
+
+        _addresses[role] = Agent(name=f"_addr_only_{role}", seed=seed).address
     return _addresses[role]
 
 

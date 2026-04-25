@@ -13,13 +13,21 @@ from .schemas import MedicalCoordinatorRequest, MedicalCoordinatorResponse
 from .tools import claude
 
 
-agent = Agent(
-    name="northstar_medical_coordinator",
-    seed=config.MEDICAL_COORDINATOR_SEED,
-    port=config.MEDICAL_COORDINATOR_PORT,
-    endpoint=[f"http://127.0.0.1:{config.MEDICAL_COORDINATOR_PORT}/submit"],
-    mailbox=bool(config.AGENTVERSE_API_KEY),
-)
+# `endpoint=` and `mailbox=True` are mutually exclusive in uAgents — passing
+# both silently disables mailbox.
+_use_mailbox = bool(config.AGENTVERSE_API_KEY)
+_agent_kwargs: dict = {
+    "name": "northstar_medical_coordinator",
+    "seed": config.MEDICAL_COORDINATOR_SEED,
+    "port": config.MEDICAL_COORDINATOR_PORT,
+}
+if _use_mailbox:
+    _agent_kwargs["mailbox"] = True
+else:
+    _agent_kwargs["endpoint"] = [
+        f"http://127.0.0.1:{config.MEDICAL_COORDINATOR_PORT}/submit"
+    ]
+agent = Agent(**_agent_kwargs)
 
 
 @agent.on_message(model=MedicalCoordinatorRequest, replies=MedicalCoordinatorResponse)

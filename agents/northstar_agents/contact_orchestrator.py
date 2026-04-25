@@ -17,13 +17,21 @@ from .schemas import (
 from .tools import claude, elevenlabs, twilio
 
 
-agent = Agent(
-    name="northstar_contact_orchestrator",
-    seed=config.CONTACT_ORCHESTRATOR_SEED,
-    port=config.CONTACT_ORCHESTRATOR_PORT,
-    endpoint=[f"http://127.0.0.1:{config.CONTACT_ORCHESTRATOR_PORT}/submit"],
-    mailbox=bool(config.AGENTVERSE_API_KEY),
-)
+# `endpoint=` and `mailbox=True` are mutually exclusive in uAgents — passing
+# both silently disables mailbox.
+_use_mailbox = bool(config.AGENTVERSE_API_KEY)
+_agent_kwargs: dict = {
+    "name": "northstar_contact_orchestrator",
+    "seed": config.CONTACT_ORCHESTRATOR_SEED,
+    "port": config.CONTACT_ORCHESTRATOR_PORT,
+}
+if _use_mailbox:
+    _agent_kwargs["mailbox"] = True
+else:
+    _agent_kwargs["endpoint"] = [
+        f"http://127.0.0.1:{config.CONTACT_ORCHESTRATOR_PORT}/submit"
+    ]
+agent = Agent(**_agent_kwargs)
 
 
 def _template_script(req: ContactOrchestratorRequest) -> str:

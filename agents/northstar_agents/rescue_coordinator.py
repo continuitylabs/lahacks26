@@ -44,13 +44,23 @@ from .tools import claude
 # ── Agent + protocol bootstrap ──────────────────────────────────────────────
 
 
-agent = Agent(
-    name="northstar_rescue_coordinator",
-    seed=config.RESCUE_COORDINATOR_SEED,
-    port=config.RESCUE_COORDINATOR_PORT,
-    endpoint=[f"http://127.0.0.1:{config.RESCUE_COORDINATOR_PORT}/submit"],
-    mailbox=bool(config.AGENTVERSE_API_KEY),
-)
+# Agent identity. When AGENTVERSE_API_KEY is set, we run in Mailbox mode —
+# Agentverse handles inbound routing, so we MUST NOT pass `endpoint=`. uAgents
+# treats them as mutually exclusive: if both are set, endpoint silently wins
+# and mailbox is disabled.
+_use_mailbox = bool(config.AGENTVERSE_API_KEY)
+_agent_kwargs: dict = {
+    "name": "northstar_rescue_coordinator",
+    "seed": config.RESCUE_COORDINATOR_SEED,
+    "port": config.RESCUE_COORDINATOR_PORT,
+}
+if _use_mailbox:
+    _agent_kwargs["mailbox"] = True
+else:
+    _agent_kwargs["endpoint"] = [
+        f"http://127.0.0.1:{config.RESCUE_COORDINATOR_PORT}/submit"
+    ]
+agent = Agent(**_agent_kwargs)
 
 chat_proto = Protocol(spec=chat_protocol_spec)
 
