@@ -8,8 +8,12 @@ import {
   type PpgFrameSample,
 } from '@/src/ppg/estimate-vitals';
 
-const CAPTURE_INTERVAL_MS = 0;
-const CAPTURE_WINDOW_MS = 14000;
+const CAPTURE_WINDOW_MS = 16000;
+const TORCH_WARMUP_MS = 900;
+const COVERAGE_THRESHOLD = 0.12;
+const EARLY_FINISH_MS = 9000;
+const EARLY_CONFIDENCE_THRESHOLD = 0.6;
+const MAX_FRAME_ERRORS = 8;
 
 type ScanPhase =
   | 'idle'
@@ -20,12 +24,13 @@ type ScanPhase =
   | 'error';
 
 const phaseMessage: Record<ScanPhase, string> = {
-  idle: 'Cover the camera and flash completely with your fingertip.',
-  warming: 'Hold steady while Northstar locks onto the pulse waveform.',
+  idle: 'Cover the rear camera and flash with your fingertip.',
+  warming: 'Hold steady — locking onto the pulse waveform.',
   measuring: 'Keep even pressure. The pulse trace is stabilizing.',
   processing: 'Turning the waveform into an on-device estimate…',
   complete: 'Reading ready.',
-  error: 'We could not get a stable pulse trace. Adjust your finger and try again.',
+  error:
+    'We could not get a stable pulse trace. Adjust your finger and try again.',
 };
 
 export function usePpgVitals() {
@@ -45,7 +50,9 @@ export function usePpgVitals() {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startedAtRef = useRef(0);
   const samplesRef = useRef<PpgFrameSample[]>([]);
-  const requestedAtRef = useRef(0);
+  const captureLoopRef = useRef<((camera: CameraView) => Promise<void>) | null>(
+    null
+  );
 
   const stop = useCallback(() => {
     activeRef.current = false;
@@ -85,22 +92,20 @@ export function usePpgVitals() {
     setPhase('complete');
   }, [stop]);
 
-  const queueNextFrame = useCallback(
-    (camera: CameraView, delay = CAPTURE_INTERVAL_MS) => {
-      if (!activeRef.current) {
-        return;
-      }
+  const scheduleNext = useCallback((camera: CameraView, delay: number) => {
+    if (!activeRef.current) return;
 
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
 
-      timeoutRef.current = setTimeout(() => {
-        void captureLoop(camera);
-      }, delay);
-    },
-    []
-  );
+    timeoutRef.current = setTimeout(() => {
+      const loop = captureLoopRef.current;
+      if (loop) {
+        void loop(camera);
+      }
+    }, Math.max(0, delay));
+  }, []);
 
   const captureLoop = useCallback(
     async (camera: CameraView) => {
@@ -109,12 +114,11 @@ export function usePpgVitals() {
       }
 
       busyRef.current = true;
-      requestedAtRef.current = Date.now();
 
       try {
         await camera.takePictureAsync({
           base64: true,
-          quality: 0.04,
+          quality: 0.1,
           shutterSound: false,
           skipProcessing: true,
           onPictureSaved: (snapshot) => {
@@ -124,20 +128,20 @@ export function usePpgVitals() {
                   return;
                 }
 
-                if (!snapshot.base64) {
-                  throw new Error('Missing frame payload');
+                if (!snapshot?.base64) {
+                  errorCountRef.current += 1;
+                  return;
                 }
-
-                errorCountRef.current = 0;
 
                 const now = Date.now();
                 const frame = extractPpgFrameSample(snapshot.base64, now);
 
+                errorCountRef.current = 0;
                 setLatestFrame(frame);
                 setSignalStrength(frame.coverage);
 
-                if (frame.coverage >= 0.12) {
-                  samplesRef.current = [...samplesRef.current, frame];
+                if (frame.coverage >= COVERAGE_THRESHOLD) {
+                  samplesRef.current.push(frame);
                   setSamplesCaptured(samplesRef.current.length);
                 }
 
@@ -146,11 +150,16 @@ export function usePpgVitals() {
 
                 setProgress(Math.min(elapsed / CAPTURE_WINDOW_MS, 1));
                 setSecondsRemaining(Math.ceil(remaining / 1000));
-                setPhase(elapsed > 1800 ? 'measuring' : 'warming');
+                setPhase(elapsed > 1500 ? 'measuring' : 'warming');
 
-                if (elapsed >= 7000) {
-                  const earlyEstimate = estimateVitalsFromSamples(samplesRef.current);
-                  if (earlyEstimate && earlyEstimate.confidence >= 0.56) {
+                if (elapsed >= EARLY_FINISH_MS) {
+                  const earlyEstimate = estimateVitalsFromSamples(
+                    samplesRef.current
+                  );
+                  if (
+                    earlyEstimate &&
+                    earlyEstimate.confidence >= EARLY_CONFIDENCE_THRESHOLD
+                  ) {
                     setResult(earlyEstimate);
                     setPhase('complete');
                     stop();
@@ -164,8 +173,7 @@ export function usePpgVitals() {
                 }
               } catch {
                 errorCountRef.current += 1;
-
-                if (errorCountRef.current >= 6) {
+                if (errorCountRef.current >= MAX_FRAME_ERRORS) {
                   finish();
                   return;
                 }
@@ -173,8 +181,7 @@ export function usePpgVitals() {
                 busyRef.current = false;
               }
 
-              const elapsedSinceRequest = Date.now() - requestedAtRef.current;
-              queueNextFrame(camera, Math.max(0, CAPTURE_INTERVAL_MS - elapsedSinceRequest));
+              scheduleNext(camera, 0);
             })();
           },
         });
@@ -182,16 +189,23 @@ export function usePpgVitals() {
         busyRef.current = false;
         errorCountRef.current += 1;
 
-        if (errorCountRef.current >= 6) {
+        if (errorCountRef.current >= MAX_FRAME_ERRORS) {
           finish();
           return;
         }
 
-        queueNextFrame(camera);
+        // Back off briefly so we don't spin if the native side is unhappy.
+        scheduleNext(camera, 120);
       }
     },
-    [finish, queueNextFrame, stop]
+    [finish, scheduleNext, stop]
   );
+
+  // Keep a ref to the latest captureLoop so scheduleNext can invoke it without
+  // creating a circular useCallback dependency.
+  useEffect(() => {
+    captureLoopRef.current = captureLoop;
+  }, [captureLoop]);
 
   const start = useCallback(
     async (camera: CameraView | null) => {
@@ -201,11 +215,19 @@ export function usePpgVitals() {
 
       reset();
       activeRef.current = true;
-      startedAtRef.current = Date.now();
       setPhase('warming');
-      queueNextFrame(camera, 0);
+
+      // Give the torch a moment to stabilize before we start logging samples.
+      // Without this, the first ~half-second of frames are dim/transient and
+      // produce useless "no finger" coverage scores that pollute early
+      // confidence checks.
+      timeoutRef.current = setTimeout(() => {
+        if (!activeRef.current) return;
+        startedAtRef.current = Date.now();
+        void captureLoop(camera);
+      }, TORCH_WARMUP_MS);
     },
-    [queueNextFrame, reset]
+    [captureLoop, reset]
   );
 
   useEffect(() => stop, [stop]);

@@ -1,7 +1,7 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
 import { GlassCard } from '@/components/glass-card';
@@ -57,17 +57,26 @@ export default function Triage() {
     return result.confidence >= 0.7 ? C.safe : C.star;
   }, [result]);
 
-  useEffect(() => {
-    if (
-      permission?.granted &&
-      cameraReady &&
-      !result &&
-      phase === 'idle' &&
-      cameraRef.current
-    ) {
+  // Torch is on while a scan is actually running. We intentionally render
+  // the CameraView with enableTorch={false} on first mount: expo-camera
+  // doesn't reliably apply the torch state on the very first prop pass
+  // (the AVCaptureSession isn't bound yet), and the workaround is to flip
+  // the prop after onCameraReady. Tying it to scan phase does that for free
+  // and also turns the LED back off when the reading is finished.
+  const torchOn =
+    phase === 'warming' || phase === 'measuring' || phase === 'processing';
+
+  const beginScan = () => {
+    if (!cameraRef.current) return;
+    void start(cameraRef.current);
+  };
+
+  const rescan = () => {
+    reset();
+    if (cameraRef.current) {
       void start(cameraRef.current);
     }
-  }, [cameraReady, permission?.granted, phase, result, start]);
+  };
 
   const avgColor = latestFrame
     ? `rgb(${Math.round(latestFrame.red)}, ${Math.round(latestFrame.green)}, ${Math.round(latestFrame.blue)})`
@@ -85,9 +94,16 @@ export default function Triage() {
           ref={cameraRef}
           style={StyleAbsoluteFill}
           facing="back"
-          enableTorch
+          mode="picture"
+          enableTorch={torchOn}
           animateShutter={false}
-          autofocus={Platform.OS === 'ios' ? 'off' : undefined}
+          // 'on' = focus once and lock. The finger sits flush against the
+          // lens, so we want the lens to stop hunting after the first frame.
+          autofocus="on"
+          // Smallest widely-supported preset on both iOS and Android. Keeps
+          // each captured JPEG ~30–80 KB so jpeg-js can decode it inside the
+          // capture loop without falling behind the heart rhythm.
+          pictureSize="640x480"
           onCameraReady={() => setCameraReady(true)}
         />
       ) : null}
@@ -363,44 +379,15 @@ export default function Triage() {
                 </View>
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 12 }}>
+              {phase === 'idle' && !result ? (
                 <Pressable
-                  onPress={() => {
-                    reset();
-                    if (cameraRef.current) {
-                      void start(cameraRef.current);
-                    }
-                  }}
+                  onPress={beginScan}
+                  disabled={!cameraReady}
                   style={({ pressed }) => ({
-                    flex: 1,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: C.edge,
-                    backgroundColor: C.glass,
-                    paddingVertical: 14,
-                    opacity: pressed ? 0.84 : 1,
-                  })}
-                >
-                  <Text
-                    selectable={false}
-                    style={{
-                      textAlign: 'center',
-                      color: C.text,
-                      fontWeight: '600',
-                      letterSpacing: 1.8,
-                    }}
-                  >
-                    RESCAN
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => router.replace('/rescue')}
-                  style={({ pressed }) => ({
-                    flex: 1,
                     borderRadius: 999,
                     borderCurve: 'continuous',
-                    backgroundColor: C.star,
-                    paddingVertical: 14,
+                    backgroundColor: cameraReady ? C.star : 'rgba(240,184,110,0.4)',
+                    paddingVertical: 16,
                     opacity: pressed ? 0.84 : 1,
                   })}
                 >
@@ -410,13 +397,64 @@ export default function Triage() {
                       textAlign: 'center',
                       color: C.void,
                       fontWeight: '700',
-                      letterSpacing: 1.8,
+                      letterSpacing: 2,
                     }}
                   >
-                    CONTINUE
+                    {cameraReady ? 'BEGIN SCAN' : 'PREPARING CAMERA…'}
                   </Text>
                 </Pressable>
-              </View>
+              ) : (
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <Pressable
+                    onPress={rescan}
+                    style={({ pressed }) => ({
+                      flex: 1,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: C.edge,
+                      backgroundColor: C.glass,
+                      paddingVertical: 14,
+                      opacity: pressed ? 0.84 : 1,
+                    })}
+                  >
+                    <Text
+                      selectable={false}
+                      style={{
+                        textAlign: 'center',
+                        color: C.text,
+                        fontWeight: '600',
+                        letterSpacing: 1.8,
+                      }}
+                    >
+                      RESCAN
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => router.replace('/rescue')}
+                    disabled={!result}
+                    style={({ pressed }) => ({
+                      flex: 1,
+                      borderRadius: 999,
+                      borderCurve: 'continuous',
+                      backgroundColor: result ? C.star : 'rgba(240,184,110,0.35)',
+                      paddingVertical: 14,
+                      opacity: pressed ? 0.84 : 1,
+                    })}
+                  >
+                    <Text
+                      selectable={false}
+                      style={{
+                        textAlign: 'center',
+                        color: C.void,
+                        fontWeight: '700',
+                        letterSpacing: 1.8,
+                      }}
+                    >
+                      CONTINUE
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
             </GlassCard>
           )}
         </View>
