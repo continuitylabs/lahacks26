@@ -261,12 +261,17 @@ deployment notes.
 - **Fetch.ai agent network** — Rescue Coordinator (Chat Protocol) + Location
   Scout + Medical Coordinator + Contact Orchestrator, with real tool calls
   to OSM Overpass, Open-Meteo, Claude, ElevenLabs, and Twilio
+- **Fall detection** — accelerometer-based foreground watcher (`expo-sensors`,
+  20 Hz, threshold 2.5g) with a 15-second "Are you okay?" countdown overlay
+  that auto-routes to `/triage`. `__DEV__` SIMULATE FALL button on the home
+  screen for demos.
 
 **Not done (in priority order):**
 1. **Triage page** — camera viewfinder + on-device vision model (Zetic Melange).
    This is the highest-impact missing piece for the demo.
-2. **Detection background service** — accelerometer + GPS anomaly model,
-   "Are you okay?" wake-up prompt.
+2. **GPS-anomaly detection** — companion to the accelerometer fall
+   detector: detect when the user has wandered far from a planned route or
+   stopped moving for an unusual stretch. Same "Are you okay?" overlay.
 3. **Frontend ↔ agent bridge** — wire the Report Incident "BEGIN TRIAGE"
    button to send a chat message to the Rescue Coordinator on Agentverse,
    then render the markdown response on a Rescue screen. Agent backend is
