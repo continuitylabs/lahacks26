@@ -16,6 +16,7 @@ import { BrandMark } from '@/components/brand-mark';
 import { Map3D } from '@/components/map-3d';
 import { useFallDetectorContext } from '@/components/fall-detector-provider';
 import { useCurrentLocation } from '@/hooks/use-current-location';
+import { useProfileState } from '@/src/lib/profile-store-provider';
 import { Pressable, Text, View } from '@/src/tw';
 
 const MONO =
@@ -41,6 +42,8 @@ export default function Home() {
   const router = useRouter();
   const location = useCurrentLocation();
   const { simulate: simulateFall } = useFallDetectorContext();
+  const { state, loaded } = useProfileState();
+  const profileEmpty = loaded && state.profile.userName.trim() === '';
 
   const ctaGlow = useSharedValue(0.5);
   useEffect(() => {
@@ -88,49 +91,80 @@ export default function Home() {
           paddingBottom: 128,
         }}
       >
-        {/* Top status strip */}
-        <View
-          style={{
-            alignSelf: 'center',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            paddingHorizontal: 14,
-            paddingVertical: 8,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.18)',
-            backgroundColor: 'rgba(11,14,18,0.55)',
-          }}
-        >
+        {/* Top status strip — nudge to Profile when empty, otherwise live coords */}
+        {profileEmpty ? (
+          <Pressable
+            onPress={() => router.push('/(tabs)/profile')}
+            style={({ pressed }) => ({
+              alignSelf: 'center',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: 'rgba(240,184,110,0.55)',
+              backgroundColor: 'rgba(240,184,110,0.12)',
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <Text
+              selectable={false}
+              style={{
+                color: '#F0B86E',
+                fontFamily: MONO,
+                fontSize: 11,
+                letterSpacing: 2.4,
+              }}
+            >
+              ⚑  SET UP YOUR BEACON
+            </Text>
+          </Pressable>
+        ) : (
           <View
             style={{
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: dotColor,
-              shadowColor: dotColor,
-              shadowOpacity: 0.8,
-              shadowRadius: 6,
-            }}
-          />
-          <Text
-            selectable
-            style={{
-              color: 'rgba(245,239,228,0.7)',
-              fontFamily: MONO,
-              fontSize: 11,
-              letterSpacing: 2,
-              textShadowColor: 'rgba(0, 0, 0, 0.7)',
-              textShadowOffset: { width: 0, height: 1 },
-              textShadowRadius: 4,
+              alignSelf: 'center',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.18)',
+              backgroundColor: 'rgba(11,14,18,0.55)',
             }}
           >
-            {location.status === 'pending'
-              ? 'LOCATING…'
-              : `${formatCoord(location.coords.latitude, 'lat')}  •  ${formatCoord(location.coords.longitude, 'lon')}`}
-          </Text>
-        </View>
+            <View
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: dotColor,
+                shadowColor: dotColor,
+                shadowOpacity: 0.8,
+                shadowRadius: 6,
+              }}
+            />
+            <Text
+              selectable
+              style={{
+                color: 'rgba(245,239,228,0.7)',
+                fontFamily: MONO,
+                fontSize: 11,
+                letterSpacing: 2,
+                textShadowColor: 'rgba(0, 0, 0, 0.7)',
+                textShadowOffset: { width: 0, height: 1 },
+                textShadowRadius: 4,
+              }}
+            >
+              {location.status === 'pending'
+                ? 'LOCATING…'
+                : `${formatCoord(location.coords.latitude, 'lat')}  •  ${formatCoord(location.coords.longitude, 'lon')}`}
+            </Text>
+          </View>
+        )}
 
         {/* Centered brand mark */}
         <View
