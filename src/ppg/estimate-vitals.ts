@@ -91,24 +91,18 @@ export function extractPpgFrameSample(
 ): PpgFrameSample {
   const bytes = decodeBase64(base64);
   const decoded = jpeg.decode(bytes, { useTArray: true });
-  const step = Math.max(16, Math.floor((decoded.width * decoded.height) / 1200)) * 4;
+  const centerX = Math.floor(decoded.width / 2);
+  const centerY = Math.floor(decoded.height / 2);
+  const centerIndex = (centerY * decoded.width + centerX) * 4;
 
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-  let count = 0;
-
-  for (let index = 0; index < decoded.data.length; index += step) {
-    red += decoded.data[index] ?? 0;
-    green += decoded.data[index + 1] ?? 0;
-    blue += decoded.data[index + 2] ?? 0;
-    count += 1;
-  }
+  const red = decoded.data[centerIndex] ?? 0;
+  const green = decoded.data[centerIndex + 1] ?? 0;
+  const blue = decoded.data[centerIndex + 2] ?? 0;
 
   return createPpgFrameSample(
-    red / Math.max(count, 1),
-    green / Math.max(count, 1),
-    blue / Math.max(count, 1),
+    red,
+    green,
+    blue,
     capturedAt
   );
 }
