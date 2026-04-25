@@ -28,7 +28,7 @@ const COOLDOWN_MS = 30_000;
 const cases: Case[] = [
   { label: 'rest (gravity only)', sample: { x: 0, y: 0, z: 1 }, nowMs: 0, expectFire: false },
   { label: 'mild walking peak (~1.5g)', sample: { x: 0.7, y: 1.0, z: 0.7 }, nowMs: 100, expectFire: false },
-  { label: 'impact spike (3.5g)', sample: { x: 2, y: 2, z: 1.5 }, nowMs: 1_000, expectFire: true },
+  { label: 'impact spike (~3.2g)', sample: { x: 2, y: 2, z: 1.5 }, nowMs: 1_000, expectFire: true },
   { label: 'second spike inside cooldown', sample: { x: 2, y: 2, z: 1.5 }, nowMs: 5_000, expectFire: false },
   { label: 'spike after cooldown elapses', sample: { x: 2, y: 2, z: 1.5 }, nowMs: 35_000, expectFire: true },
 ];

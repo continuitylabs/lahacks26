@@ -34,9 +34,9 @@ export function FallDetectorProvider({ children }: { children: ReactNode }) {
   });
 
   const simulate = useCallback(() => {
-    if (alertVisible) return;
+    if (alertVisible || inIncidentFlow) return;
     hookSimulate();
-  }, [alertVisible, hookSimulate]);
+  }, [alertVisible, inIncidentFlow, hookSimulate]);
 
   const handleDismiss = useCallback(() => {
     setAlertVisible(false);
