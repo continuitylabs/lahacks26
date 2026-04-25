@@ -14,7 +14,7 @@ import type { TextStyle } from 'react-native';
 import { BrandMark } from '@/components/brand-mark';
 import { GlassCard } from '@/components/glass-card';
 import { useProfileState } from '@/src/lib/profile-store-provider';
-import { ScrollView, Text, TextInput, View } from '@/src/tw';
+import { Pressable, ScrollView, Text, TextInput, View } from '@/src/tw';
 
 const SERIF =
   Platform.OS === 'ios'
@@ -54,6 +54,22 @@ const clampAge = (raw: string): { value: number | null; display: string } => {
   return { value: clamped, display: String(clamped) };
 };
 
+const formatRelative = (ts: number, now: number = Date.now()): string => {
+  const seconds = Math.max(0, Math.round((now - ts) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  return `${days} d ago`;
+};
+
+const formatCoord = (n: number, axis: 'lat' | 'lon'): string => {
+  const dir = axis === 'lat' ? (n >= 0 ? 'N' : 'S') : n >= 0 ? 'E' : 'W';
+  return `${Math.abs(n).toFixed(4)}°${dir}`;
+};
+
 export default function Profile() {
   return (
     <View style={{ flex: 1, backgroundColor: '#0b0e12' }}>
@@ -79,6 +95,7 @@ export default function Profile() {
           <IdentityCard />
           <EmergencyContactCard />
           <MedicalNotesCard />
+          <LastBeaconCard />
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -398,6 +415,155 @@ function MedicalNotesCard() {
         style={{ minHeight: 96, paddingTop: 12 }}
       />
     </GlassCard>
+  );
+}
+
+function LastBeaconCard() {
+  const { state, loaded, clearSession } = useProfileState();
+  const { session } = state;
+
+  if (!loaded) return <SkeletonCard />;
+
+  const hasAnything =
+    session.lastCoords ||
+    session.lastVitals ||
+    session.lastTriageReport ||
+    session.lastReportMarkdown;
+
+  return (
+    <GlassCard
+      style={{
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        gap: 12,
+        borderColor: 'rgba(240,184,110,0.25)',
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Text style={{ fontSize: 24, color: C.star }}>◑</Text>
+        <Text
+          selectable={false}
+          style={{ flex: 1, fontFamily: SERIF, fontSize: 17, color: C.text }}
+        >
+          Last beacon
+        </Text>
+      </View>
+
+      {!hasAnything ? (
+        <Text
+          selectable={false}
+          style={{ color: C.faint, fontSize: 13, lineHeight: 20 }}
+        >
+          No readings yet. Northstar will fill this in as you use the app.
+        </Text>
+      ) : (
+        <View style={{ gap: 10 }}>
+          {session.lastCoords ? (
+            <BeaconRow
+              label="LOCATION"
+              value={`${formatCoord(session.lastCoords.latitude, 'lat')}  •  ${formatCoord(session.lastCoords.longitude, 'lon')}`}
+              meta={formatRelative(session.lastCoords.capturedAt)}
+            />
+          ) : null}
+          {session.lastVitals ? (
+            <BeaconRow
+              label="VITALS"
+              value={`${session.lastVitals.heartRate} BPM  •  ${session.lastVitals.spo2}% SpO2  •  ${session.lastVitals.systolic}/${session.lastVitals.diastolic} mmHg`}
+              meta={formatRelative(session.lastVitals.capturedAt)}
+            />
+          ) : null}
+          {session.lastTriageReport ? (
+            <BeaconRow
+              label="TRIAGE"
+              value={session.lastTriageReport.summary}
+              meta={formatRelative(session.lastTriageReport.capturedAt)}
+            />
+          ) : null}
+        </View>
+      )}
+
+      {hasAnything ? (
+        <Pressable
+          onPress={clearSession}
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            marginTop: 4,
+            paddingVertical: 4,
+            opacity: pressed ? 0.5 : 1,
+          })}
+        >
+          <Text
+            selectable={false}
+            style={{
+              fontFamily: MONO,
+              fontSize: 10,
+              letterSpacing: 2.4,
+              color: C.muted,
+            }}
+          >
+            CLEAR SESSION DATA
+          </Text>
+        </Pressable>
+      ) : null}
+    </GlassCard>
+  );
+}
+
+function BeaconRow({
+  label,
+  value,
+  meta,
+}: {
+  label: string;
+  value: string;
+  meta: string;
+}) {
+  return (
+    <View
+      style={{
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.08)',
+        paddingTop: 8,
+        gap: 4,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <Text
+          selectable={false}
+          style={{
+            fontFamily: MONO,
+            fontSize: 10,
+            letterSpacing: 2,
+            color: C.faint,
+          }}
+        >
+          {label}
+        </Text>
+        <Text
+          selectable={false}
+          style={{
+            fontFamily: MONO,
+            fontSize: 10,
+            letterSpacing: 1.4,
+            color: C.faint,
+          }}
+        >
+          {meta}
+        </Text>
+      </View>
+      <Text
+        selectable
+        style={{ color: C.text, fontSize: 13, lineHeight: 18 }}
+      >
+        {value}
+      </Text>
+    </View>
   );
 }
 
