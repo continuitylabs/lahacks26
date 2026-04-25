@@ -114,6 +114,9 @@ function migrate(raw: unknown): ProfileState {
   // version === CURRENT_SCHEMA_VERSION. Defensively merge against defaults
   // so a partially-written blob (e.g. from a crashed write) still hydrates
   // into a valid shape.
+  // Shallow merge against defaults — corrupt field types (e.g. age as a
+  // string) flow through unchecked. Deep validation is out of scope per
+  // the spec's non-goals.
   return {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     profile: { ...DEFAULT_PROFILE, ...(obj.profile ?? {}) } as Profile,
@@ -122,30 +125,37 @@ function migrate(raw: unknown): ProfileState {
 }
 
 let cached: ProfileState | null = null;
+let inflight: Promise<ProfileState> | null = null;
 
 export async function loadProfileState(): Promise<ProfileState> {
   if (cached) return cached;
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) {
+  if (inflight) return inflight;
+  inflight = (async () => {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        cached = DEFAULT_STATE;
+        return cached;
+      }
+      const parsed = JSON.parse(raw) as unknown;
+      cached = migrate(parsed);
+      // If migration changed the shape, persist immediately so the next load
+      // is fast.
+      if (JSON.stringify(parsed) !== JSON.stringify(cached)) {
+        void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(cached)).catch(
+          () => undefined
+        );
+      }
+      return cached;
+    } catch (err) {
+      console.warn('[profile-store] load failed, using defaults', err);
       cached = DEFAULT_STATE;
       return cached;
+    } finally {
+      inflight = null;
     }
-    const parsed = JSON.parse(raw) as unknown;
-    cached = migrate(parsed);
-    // If migration changed the shape, persist immediately so the next load
-    // is fast.
-    if (JSON.stringify(parsed) !== JSON.stringify(cached)) {
-      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(cached)).catch(
-        () => undefined
-      );
-    }
-    return cached;
-  } catch (err) {
-    console.warn('[profile-store] load failed, using defaults', err);
-    cached = DEFAULT_STATE;
-    return cached;
-  }
+  })();
+  return inflight;
 }
 
 async function persist(next: ProfileState): Promise<ProfileState> {
@@ -167,10 +177,13 @@ export async function setProfile(
     profile: {
       ...current.profile,
       ...patch,
-      emergencyContact: {
-        ...current.profile.emergencyContact,
-        ...(patch.emergencyContact ?? {}),
-      },
+      // Deep-merge nested object so partial patches preserve untouched fields.
+      ...(patch.emergencyContact && {
+        emergencyContact: {
+          ...current.profile.emergencyContact,
+          ...patch.emergencyContact,
+        },
+      }),
     },
   };
   return persist(next);
@@ -199,4 +212,5 @@ export async function clearSession(): Promise<ProfileState> {
 /** Test-only: reset the in-memory cache so subsequent loads re-read storage. */
 export function __resetCacheForTests(): void {
   cached = null;
+  inflight = null;
 }
