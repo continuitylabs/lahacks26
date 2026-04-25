@@ -1,11 +1,12 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
 import { GlassCard } from '@/components/glass-card';
 import { usePpgVitals } from '@/hooks/use-ppg-vitals';
+import { useProfileState } from '@/src/lib/profile-store-provider';
 import { Pressable, Text, View } from '@/src/tw';
 
 const SERIF =
@@ -48,6 +49,22 @@ export default function Triage() {
     start,
     reset,
   } = ppg;
+
+  const { updateSession } = useProfileState();
+
+  useEffect(() => {
+    if (phase !== 'complete' || !result) return;
+    updateSession({
+      lastVitals: {
+        heartRate: result.heartRate,
+        spo2: result.spo2,
+        systolic: result.systolic,
+        diastolic: result.diastolic,
+        confidence: result.confidence,
+        capturedAt: Date.now(),
+      },
+    });
+  }, [phase, result, updateSession]);
 
   const readingTone = useMemo(() => {
     if (!result) {
