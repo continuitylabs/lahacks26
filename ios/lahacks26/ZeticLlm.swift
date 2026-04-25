@@ -73,7 +73,9 @@ class ZeticLlm: RCTEventEmitter {
         try self.trapNSException {
           built = try ZeticMLangeLLMModel(
             personalKey: personalKey,
-            name: name
+            name: name,
+            version: 1,
+            modelMode: LLMModelMode.RUN_AUTO,
           ) { progress in
             self.send("zetic:download", ["progress": progress])
           }

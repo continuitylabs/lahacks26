@@ -14,7 +14,7 @@ export type LoadStatus =
   | { kind: 'ready' }
   | { kind: 'error'; message: string };
 
-const MODEL_ID = 'Qwen/Qwen3-4B';
+const MODEL_ID = 'Steve/Qwen3.5-2B';
 const PERSONAL_KEY = 'dev_7fee89ec7a6640808c3d7cf2e66c62b8';
 
 const MAX_PROMPT_CHARS = 3000;
@@ -52,7 +52,7 @@ export function useZeticChat() {
         setStatus((prev) =>
           prev.kind === 'ready'
             ? prev
-            : { kind: 'loading', progress: event.progress }
+            : { kind: 'loading', progress: event.progress },
         );
       } else if (event.type === 'token') {
         streamRef.current += event.token;
@@ -93,7 +93,11 @@ export function useZeticChat() {
       const trimmed = text.trim();
       if (!trimmed || isGenerating || status.kind !== 'ready') return;
 
-      const userMsg: ChatMessage = { id: makeId(), role: 'user', text: trimmed };
+      const userMsg: ChatMessage = {
+        id: makeId(),
+        role: 'user',
+        text: trimmed,
+      };
       const next = [...messages, userMsg];
       setMessages(next);
       streamRef.current = '';
@@ -122,7 +126,7 @@ export function useZeticChat() {
         setIsGenerating(false);
       }
     },
-    [isGenerating, messages, status.kind]
+    [isGenerating, messages, status.kind],
   );
 
   const stop = useCallback(async () => {
