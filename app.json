@@ -9,9 +9,17 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Northstar uses the rear camera and flash to read a fingertip pulse waveform during triage."
+      },
+      "bundleIdentifier": "com.anonymous.lahacks26"
     },
     "android": {
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.CAMERA"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -19,7 +27,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.lahacks26"
     },
     "web": {
       "output": "static",

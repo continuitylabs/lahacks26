@@ -104,7 +104,7 @@ export default function ReportIncident() {
           <Step
             number="1"
             title="Triage"
-            body="Point the camera at the injury. The on-device vision model classifies severity in real time."
+            body="Cover the rear camera and flash with your fingertip. Northstar reads a pulse waveform on-device to estimate oxygen saturation and blood pressure trend."
             chip="ZETIC"
           />
           <Step
@@ -125,8 +125,7 @@ export default function ReportIncident() {
 
         <Pressable
           onPress={() => {
-            // TODO: navigate to the triage camera once wired up.
-            router.back();
+            router.push('/triage');
           }}
           style={({ pressed }) => ({
             borderRadius: 999,
