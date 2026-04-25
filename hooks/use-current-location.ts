@@ -1,6 +1,8 @@
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
 
+import { useProfileState } from '@/src/lib/profile-store-provider';
+
 export type Coords = { latitude: number; longitude: number };
 
 // Royce Hall, UCLA — fallback when permission denied or location unavailable.
@@ -19,6 +21,7 @@ export function useCurrentLocation(): LocationState {
     status: 'pending',
     coords: FALLBACK_COORDS,
   });
+  const { updateSession } = useProfileState();
 
   useEffect(() => {
     let cancelled = false;
@@ -34,12 +37,13 @@ export function useCurrentLocation(): LocationState {
           accuracy: Location.Accuracy.Balanced,
         });
         if (cancelled) return;
-        setState({
-          status: 'granted',
-          coords: {
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-          },
+        const coords = {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        };
+        setState({ status: 'granted', coords });
+        updateSession({
+          lastCoords: { ...coords, capturedAt: Date.now() },
         });
       } catch {
         if (!cancelled) {
@@ -50,7 +54,7 @@ export function useCurrentLocation(): LocationState {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [updateSession]);
 
   return state;
 }
