@@ -1,50 +1,62 @@
-# Welcome to your Expo app 👋
+# Northstar
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+> *The light that guides you home.*
 
-## Get started
+A backcountry safety companion built for the **UCLA Hackathon 2026**.
 
-1. Install dependencies
+You're hiking or biking alone. You take a tumble, sprain your ankle, lose
+the trail. Northstar wakes itself up, triages your injury on-device, and —
+the moment any signal returns — quietly coordinates a rescue.
 
-   ```bash
-   npm install
-   ```
+- **On-device detection & triage** via [Zetic Melange](https://zetic.ai)
+  (accelerometer + GPS anomaly detection, vision triage)
+- **Autonomous rescue coordination** via
+  [Fetch.ai Agentverse](https://fetch.ai)
+  (Location Scout · Medical Coordinator · Contact Orchestrator)
+- **Voice-driven dispatch call** via ElevenLabs + Twilio
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run it
 
 ```bash
-npm run reset-project
+bun install
+bunx expo start          # then press `i`, `a`, or `w`
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Expo Go works for the current scaffold. Custom dev clients become required
+once the on-device ML modules land.
 
-## Learn more
+## Configure
 
-To learn more about developing your project with Expo, look at the following resources:
+Create `.env.local`:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```
+EXPO_PUBLIC_MAPS_KEY=<your-google-maps-key>
+```
 
-## Join the community
+Your Google Cloud project needs the **Maps JavaScript API**, the **Map Tiles
+API** with **Photorealistic 3D Tiles** enabled, and a billing account
+attached.
 
-Join our community of developers creating universal apps.
+## Structure
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```
+app/                 expo-router routes
+components/          BrandMark, GlassCard, Map3D, TabBar
+hooks/               use-current-location
+src/
+  global.css         Tailwind v4 entry + Northstar @theme tokens
+  tw/                NativeWind-wrapped View/Text/Pressable/Image/etc.
+```
+
+## For coding agents
+
+Read [`AGENTS.md`](./AGENTS.md) before touching this repo. It covers the
+pitch, the design philosophy, the stack quirks (NativeWind v5, the
+photorealistic map WebView, the lightningcss pin), the color tokens, and
+what's done vs. what's ahead.
+
+## Stack
+
+Expo SDK 54 · Expo Router 6 · Reanimated 4 · NativeWind v5 (Tailwind v4) ·
+react-native-webview · expo-location · expo-blur · expo-linear-gradient ·
+bun.

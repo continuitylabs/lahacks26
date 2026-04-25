@@ -1,0 +1,57 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+
+@media android {
+  :root {
+    --font-mono: monospace;
+    --font-rounded: normal;
+    --font-serif: serif;
+    --font-sans: normal;
+  }
+}
+
+@media ios {
+  :root {
+    --font-mono: ui-monospace;
+    --font-serif: ui-serif;
+    --font-sans: system-ui;
+    --font-rounded: ui-rounded;
+  }
+}
+
+@layer theme {
+  @theme {
+    /* Northstar palette — nature-rooted, technical accents.
+       The map is the world. UI floats above it as glass and light. */
+
+    /* Backdrop dimming over the map for legibility */
+    --color-ns-void: #0b0e12;
+    --color-ns-forest: #0f1f1a;
+    --color-ns-bark: #1a2620;
+
+    /* Glass surfaces (used with backdrop-blur) */
+    --color-ns-glass: rgba(255, 255, 255, 0.08);
+    --color-ns-glass-strong: rgba(255, 255, 255, 0.14);
+    --color-ns-glass-edge: rgba(255, 255, 255, 0.18);
+
+    /* The "north star" — guidance, the safe path home */
+    --color-ns-star: #f0b86e;
+    --color-ns-star-soft: #f8d9a6;
+    --color-ns-star-deep: #c98a3f;
+
+    /* Status — only crimson for true emergencies */
+    --color-ns-safe: #6cc28a;
+    --color-ns-alert: #f0b86e;
+    --color-ns-critical: #e5484d;
+
+    /* Foreground tones */
+    --color-ns-text: #f5efe4;
+    --color-ns-text-muted: rgba(245, 239, 228, 0.65);
+    --color-ns-text-faint: rgba(245, 239, 228, 0.4);
+
+    /* Type */
+    --font-display: ui-serif, Georgia, "Times New Roman", serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+}

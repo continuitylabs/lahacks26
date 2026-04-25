@@ -1,98 +1,223 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { useEffect } from 'react';
+import { Platform } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { BrandMark } from '@/components/brand-mark';
+import { Map3D } from '@/components/map-3d';
+import { useCurrentLocation } from '@/hooks/use-current-location';
+import { Pressable, Text, View } from '@/src/tw';
 
-export default function HomeScreen() {
+const MONO =
+  Platform.OS === 'ios'
+    ? 'ui-monospace'
+    : Platform.OS === 'android'
+      ? 'monospace'
+      : 'monospace';
+
+const SANS =
+  Platform.OS === 'ios'
+    ? 'Helvetica Neue'
+    : Platform.OS === 'android'
+      ? 'sans-serif'
+      : 'sans-serif';
+
+const formatCoord = (n: number, axis: 'lat' | 'lon') => {
+  const dir = axis === 'lat' ? (n >= 0 ? 'N' : 'S') : n >= 0 ? 'E' : 'W';
+  return `${Math.abs(n).toFixed(4)}°${dir}`;
+};
+
+export default function Home() {
+  const router = useRouter();
+  const location = useCurrentLocation();
+
+  const ctaGlow = useSharedValue(0.5);
+  useEffect(() => {
+    ctaGlow.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
+        withTiming(0.5, { duration: 1800, easing: Easing.inOut(Easing.quad) })
+      ),
+      -1,
+      false
+    );
+  }, [ctaGlow]);
+
+  const ctaGlowStyle = useAnimatedStyle(() => ({
+    shadowOpacity: ctaGlow.value * 0.6,
+  }));
+
+  const dotColor =
+    location.status === 'granted'
+      ? '#6CC28A'
+      : location.status === 'pending'
+        ? '#F0B86E'
+        : 'rgba(245,239,228,0.4)';
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <View style={{ flex: 1, backgroundColor: '#0b0e12' }}>
+      {/* Ambient revolving 3D map — set dressing, not a tool. */}
+      <Map3D coords={location.coords} style={{ ...StyleAbsoluteFill }} />
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      {/* Vignette so HUD elements stay legible over varied terrain. */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(11,14,18,0.65)', 'rgba(11,14,18,0)', 'rgba(11,14,18,0.85)']}
+        locations={[0, 0.4, 1]}
+        style={StyleAbsoluteFill}
+      />
+
+      {/* HUD layer */}
+      <View
+        pointerEvents="box-none"
+        style={{
+          flex: 1,
+          paddingHorizontal: 24,
+          paddingTop: 64,
+          paddingBottom: 128,
+        }}
+      >
+        {/* Top status strip */}
+        <View
+          style={{
+            alignSelf: 'center',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            paddingHorizontal: 14,
+            paddingVertical: 8,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.18)',
+            backgroundColor: 'rgba(11,14,18,0.55)',
+          }}
+        >
+          <View
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: dotColor,
+              shadowColor: dotColor,
+              shadowOpacity: 0.8,
+              shadowRadius: 6,
+            }}
+          />
+          <Text
+            selectable
+            style={{
+              color: 'rgba(245,239,228,0.7)',
+              fontFamily: MONO,
+              fontSize: 11,
+              letterSpacing: 2,
+              textShadowColor: 'rgba(0, 0, 0, 0.7)',
+              textShadowOffset: { width: 0, height: 1 },
+              textShadowRadius: 4,
+            }}
+          >
+            {location.status === 'pending'
+              ? 'LOCATING…'
+              : `${formatCoord(location.coords.latitude, 'lat')}  •  ${formatCoord(location.coords.longitude, 'lon')}`}
+          </Text>
+        </View>
+
+        {/* Centered brand mark */}
+        <View
+          pointerEvents="none"
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <BrandMark size="lg" />
+        </View>
+
+        {/* Primary CTA — the moment that matters */}
+        <Animated.View
+          style={[
+            ctaGlowStyle,
+            {
+              shadowColor: '#F0B86E',
+              shadowOffset: { width: 0, height: 0 },
+              shadowRadius: 24,
+              alignSelf: 'center',
+              width: '100%',
+              maxWidth: 360,
+            },
+          ]}
+        >
+          <Pressable
+            onPress={() => {
+              if (Platform.OS === 'ios') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              }
+              router.push('/report-incident');
+            }}
+            style={({ pressed }) => ({
+              borderRadius: 999,
+              borderCurve: 'continuous',
+              backgroundColor: '#F0B86E',
+              paddingHorizontal: 32,
+              paddingVertical: 18,
+              opacity: pressed ? 0.8 : 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'row',
+              gap: 12,
+            })}
+          >
+            <Text
+              selectable={false}
+              style={{ color: '#0b0e12', fontSize: 20, lineHeight: 22 }}
+            >
+              ⚑
+            </Text>
+            <Text
+              selectable={false}
+              style={{
+                color: '#0b0e12',
+                fontFamily: SANS,
+                fontSize: 16,
+                fontWeight: '700',
+                letterSpacing: 2.5,
+              }}
+            >
+              REPORT INCIDENT
+            </Text>
+          </Pressable>
+        </Animated.View>
+
+        <Text
+          selectable={false}
+          style={{
+            marginTop: 14,
+            textAlign: 'center',
+            color: 'rgba(245,239,228,0.55)',
+            fontFamily: MONO,
+            fontSize: 11,
+            letterSpacing: 2.4,
+            textShadowColor: 'rgba(0, 0, 0, 0.7)',
+            textShadowOffset: { width: 0, height: 1 },
+            textShadowRadius: 4,
+          }}
+        >
+          ON-DEVICE TRIAGE  •  AUTONOMOUS RESCUE
+        </Text>
+      </View>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});
+const StyleAbsoluteFill = {
+  position: 'absolute' as const,
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+};
