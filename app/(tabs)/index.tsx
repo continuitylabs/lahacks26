@@ -14,6 +14,7 @@ import Animated, {
 
 import { BrandMark } from '@/components/brand-mark';
 import { Map3D } from '@/components/map-3d';
+import { useFallDetectorContext } from '@/components/fall-detector-provider';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { Pressable, Text, View } from '@/src/tw';
 
@@ -39,6 +40,7 @@ const formatCoord = (n: number, axis: 'lat' | 'lon') => {
 export default function Home() {
   const router = useRouter();
   const location = useCurrentLocation();
+  const { simulate: simulateFall } = useFallDetectorContext();
 
   const ctaGlow = useSharedValue(0.5);
   useEffect(() => {
@@ -209,6 +211,36 @@ export default function Home() {
         >
           ON-DEVICE TRIAGE  •  AUTONOMOUS RESCUE
         </Text>
+
+        {__DEV__ ? (
+          <Pressable
+            onPress={simulateFall}
+            style={({ pressed }) => ({
+              position: 'absolute',
+              left: 16,
+              bottom: 16,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: 'rgba(229,72,77,0.5)',
+              backgroundColor: 'rgba(229,72,77,0.12)',
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <Text
+              selectable={false}
+              style={{
+                fontFamily: MONO,
+                fontSize: 9,
+                letterSpacing: 2.2,
+                color: '#E5484D',
+              }}
+            >
+              SIMULATE FALL
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
