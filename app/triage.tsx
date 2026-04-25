@@ -6,6 +6,9 @@ import { Platform } from 'react-native';
 
 import { GlassCard } from '@/components/glass-card';
 import { usePpgVitals } from '@/hooks/use-ppg-vitals';
+import { useCurrentLocation } from '@/hooks/use-current-location';
+import { requestEmergencyCall } from '@/src/call-bridge';
+import type { PatientData } from '@/src/patient-data';
 import { Pressable, Text, View } from '@/src/tw';
 
 const SERIF =
@@ -35,6 +38,11 @@ export default function Triage() {
   const cameraRef = useRef<CameraView | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [cameraReady, setCameraReady] = useState(false);
+  const [callStatus, setCallStatus] = useState<{
+    state: 'idle' | 'calling' | 'called' | 'failed';
+    detail?: string;
+  }>({ state: 'idle' });
+  const location = useCurrentLocation();
   const ppg = usePpgVitals();
   const {
     phase,
@@ -43,8 +51,8 @@ export default function Triage() {
     progress,
     message,
     secondsRemaining,
+    framesAttempted,
     samplesCaptured,
-    latestFrame,
     start,
     reset,
   } = ppg;
@@ -69,9 +77,83 @@ export default function Triage() {
     }
   }, [cameraReady, permission?.granted, phase, result, start]);
 
-  const avgColor = latestFrame
-    ? `rgb(${Math.round(latestFrame.red)}, ${Math.round(latestFrame.green)}, ${Math.round(latestFrame.blue)})`
-    : null;
+  const patientData = useMemo<PatientData>(
+    () => ({
+      collectedAt: new Date().toISOString(),
+      contactTarget: '+14084386340',
+      patient: {
+        name: 'Unknown patient',
+        age: 'Unknown',
+        medicalBaseline: 'No saved baseline in app profile yet.',
+      },
+      location: {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        status: location.status,
+      },
+      triage: {
+        confidence: result?.confidence ?? null,
+        signalStrength,
+        framesAttempted,
+        samplesCaptured,
+        heartRate: result?.heartRate ?? null,
+        spo2: result?.spo2 ?? null,
+        respiratoryRate: result?.respiratoryRate ?? null,
+        hrv: result?.hrv ?? null,
+        systolic: result?.systolic ?? null,
+        diastolic: result?.diastolic ?? null,
+        perfusionIndex: result?.perfusionIndex ?? null,
+      },
+      summary: [
+        result?.heartRate ? `Pulse ${result.heartRate} BPM` : 'Pulse unavailable',
+        result?.spo2 ? `SpO2 ${result.spo2}%` : 'SpO2 unavailable',
+        result?.respiratoryRate ? `Respiratory rate ${result.respiratoryRate} RPM` : 'Respiratory rate unavailable',
+        result?.systolic && result?.diastolic
+          ? `Estimated blood pressure ${result.systolic}/${result.diastolic} mmHg`
+          : 'Estimated blood pressure unavailable',
+        `Signal strength ${Math.round(signalStrength * 100)}%`,
+        `Frames ${samplesCaptured} usable out of ${framesAttempted} attempts`,
+      ],
+    }),
+    [
+      framesAttempted,
+      location.coords.latitude,
+      location.coords.longitude,
+      location.status,
+      result?.confidence,
+      result?.diastolic,
+      result?.heartRate,
+      result?.hrv,
+      result?.perfusionIndex,
+      result?.respiratoryRate,
+      result?.spo2,
+      result?.systolic,
+      samplesCaptured,
+      signalStrength,
+    ]
+  );
+
+  async function handleCall() {
+    try {
+      console.log('[NorthstarTriage] Call button pressed', patientData);
+      setCallStatus({ state: 'calling', detail: 'Checking call bridge…' });
+      const response = await requestEmergencyCall(patientData);
+      console.log('[NorthstarTriage] Call response received', response);
+      setCallStatus({
+        state: response.status === 'called' ? 'called' : 'failed',
+        detail:
+          response.status === 'called'
+            ? `Call placed${response.callSid ? ` • SID ${response.callSid}` : ''}`
+            : response.notes ?? 'The bridge did not complete the call.',
+      });
+    } catch (error) {
+      console.error('[NorthstarTriage] Call failed', error);
+      setCallStatus({
+        state: 'failed',
+        detail: error instanceof Error ? error.message : 'The call failed.',
+      });
+    }
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: C.void }}>
@@ -152,8 +234,8 @@ export default function Triage() {
             style={{ color: C.muted, fontSize: 15, lineHeight: 22 }}
           >
             Cover the rear camera and flash with your fingertip. Northstar uses
-            photoplethysmography to estimate pulse, oxygen saturation, and a
-            blood-pressure trend on-device.
+            photoplethysmography to estimate pulse, oxygen saturation, breathing
+            rate, perfusion, HRV, and a blood-pressure trend on-device.
           </Text>
         </View>
 
@@ -242,6 +324,32 @@ export default function Triage() {
                 unit="EST mmHg"
               />
 
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <MetricCard
+                  title="Breathing"
+                  value={result ? `${result.respiratoryRate}` : '--'}
+                  unit="RPM"
+                />
+                <MetricCard
+                  title="HRV"
+                  value={result ? `${result.hrv}` : '--'}
+                  unit="RMSSD ms"
+                />
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <MetricCard
+                  title="Perfusion"
+                  value={result ? `${result.perfusionIndex.toFixed(1)}` : '--'}
+                  unit="PI %"
+                />
+                <MetricCard
+                  title="Attempts"
+                  value={`${framesAttempted}`}
+                  unit="captured"
+                />
+              </View>
+
               <View
                 style={{
                   borderRadius: 20,
@@ -276,8 +384,8 @@ export default function Triage() {
                     }}
                   >
                     {phase === 'complete'
-                      ? `${result?.samplesUsed ?? 0} FRAMES`
-                      : `${samplesCaptured} FRAMES  •  ${secondsRemaining}s LEFT`}
+                      ? `${result?.samplesUsed ?? 0} GOOD  •  ${framesAttempted} TOTAL`
+                      : `${samplesCaptured} GOOD  •  ${framesAttempted} TOTAL  •  ${secondsRemaining}s LEFT`}
                   </Text>
                 </View>
 
@@ -300,79 +408,43 @@ export default function Triage() {
                 </View>
               </View>
 
-              <View
-                style={{
-                  borderRadius: 20,
-                  borderWidth: 1,
-                  borderColor: C.edge,
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  paddingHorizontal: 16,
-                  paddingVertical: 14,
-                  gap: 10,
-                }}
-              >
-                <Text
-                  selectable={false}
-                  style={{
-                    color: C.faint,
-                    fontFamily: MONO,
-                    fontSize: 11,
-                    letterSpacing: 2.2,
-                  }}
-                >
-                  DEBUG COLOR
-                </Text>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 12,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      borderColor: C.edge,
-                      backgroundColor: avgColor ?? 'rgba(255,255,255,0.12)',
-                    }}
-                  />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text
-                      selectable={false}
-                      style={{ color: C.text, fontSize: 13, fontWeight: '600' }}
-                    >
-                      {avgColor ?? 'Awaiting frame…'}
-                    </Text>
-                    <Text
-                      selectable={false}
-                      style={{
-                        color: C.faint,
-                        fontFamily: MONO,
-                        fontSize: 11,
-                        letterSpacing: 1.2,
-                      }}
-                    >
-                      {latestFrame
-                        ? `R ${Math.round(latestFrame.red)}  •  G ${Math.round(latestFrame.green)}  •  B ${Math.round(latestFrame.blue)}`
-                        : 'No sampled pixels yet'}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <Pressable
                   onPress={() => {
+                    void handleCall();
+                  }}
+                  disabled={callStatus.state === 'calling'}
+                  style={({ pressed }) => ({
+                    flex: 1.15,
+                    borderRadius: 999,
+                    borderCurve: 'continuous',
+                    backgroundColor: C.star,
+                    paddingVertical: 14,
+                    opacity: callStatus.state === 'calling' ? 0.72 : pressed ? 0.84 : 1,
+                  })}
+                >
+                  <Text
+                    selectable={false}
+                    style={{
+                      textAlign: 'center',
+                      color: C.void,
+                      fontWeight: '700',
+                      letterSpacing: 1.5,
+                    }}
+                  >
+                    {callStatus.state === 'calling' ? 'CALLING…' : 'CALL 408-438-6340'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
                     reset();
+                    setCallStatus({ state: 'idle' });
                     if (cameraRef.current) {
                       void start(cameraRef.current);
                     }
                   }}
                   style={({ pressed }) => ({
-                    flex: 1,
+                    flex: 0.85,
                     borderRadius: 999,
                     borderWidth: 1,
                     borderColor: C.edge,
@@ -393,30 +465,87 @@ export default function Triage() {
                     RESCAN
                   </Text>
                 </Pressable>
-                <Pressable
-                  onPress={() => router.back()}
-                  style={({ pressed }) => ({
-                    flex: 1,
-                    borderRadius: 999,
-                    borderCurve: 'continuous',
-                    backgroundColor: C.star,
-                    paddingVertical: 14,
-                    opacity: pressed ? 0.84 : 1,
-                  })}
-                >
-                  <Text
-                    selectable={false}
-                    style={{
-                      textAlign: 'center',
-                      color: C.void,
-                      fontWeight: '700',
-                      letterSpacing: 1.8,
-                    }}
-                  >
-                    DONE
-                  </Text>
-                </Pressable>
               </View>
+
+              <View
+                style={{
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor:
+                    callStatus.state === 'failed'
+                      ? 'rgba(229,72,77,0.4)'
+                      : callStatus.state === 'called'
+                        ? 'rgba(108,194,138,0.32)'
+                        : C.edge,
+                  backgroundColor:
+                    callStatus.state === 'failed'
+                      ? 'rgba(229,72,77,0.08)'
+                      : callStatus.state === 'called'
+                        ? 'rgba(108,194,138,0.08)'
+                        : 'rgba(255,255,255,0.05)',
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                  gap: 6,
+                }}
+              >
+                <Text
+                  selectable={false}
+                  style={{
+                    color:
+                      callStatus.state === 'failed'
+                        ? C.critical
+                        : callStatus.state === 'called'
+                          ? C.safe
+                          : C.starSoft,
+                    fontFamily: MONO,
+                    fontSize: 11,
+                    letterSpacing: 1.8,
+                  }}
+                >
+                  {callStatus.state === 'idle'
+                    ? 'CALL STATUS'
+                    : callStatus.state === 'calling'
+                      ? 'CALL IN PROGRESS'
+                      : callStatus.state === 'called'
+                        ? 'CALL PLACED'
+                        : 'CALL FAILED'}
+                </Text>
+                <Text
+                  selectable={false}
+                  style={{
+                    color: C.text,
+                    fontSize: 13,
+                    lineHeight: 18,
+                  }}
+                >
+                  {callStatus.detail ??
+                    'Tap call to send the current patient data and place the dispatch call.'}
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={() => router.back()}
+                style={({ pressed }) => ({
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: C.edge,
+                  backgroundColor: C.glass,
+                  paddingVertical: 14,
+                  opacity: pressed ? 0.84 : 1,
+                })}
+              >
+                <Text
+                  selectable={false}
+                  style={{
+                    textAlign: 'center',
+                    color: C.text,
+                    fontWeight: '600',
+                    letterSpacing: 1.8,
+                  }}
+                >
+                  DONE
+                </Text>
+              </Pressable>
             </GlassCard>
           )}
         </View>
@@ -432,10 +561,10 @@ export default function Triage() {
           }}
         >
           {phase === 'complete' && result
-            ? `CONFIDENCE ${Math.round(result.confidence * 100)}%  •  DEMO ESTIMATE ONLY`
-            : latestFrame && latestFrame.coverage < 0.12
+            ? `CONFIDENCE ${Math.round(result.confidence * 100)}%  •  PPG DEMO ESTIMATE ONLY`
+            : signalStrength < 0.08
               ? 'SEAL CAMERA + FLASH FULLY WITH YOUR FINGER'
-              : 'EXPO CAMERA DEBUG  •  NOT FOR CLINICAL USE'}
+              : 'BEST-EFFORT PPG  •  NOT FOR CLINICAL USE'}
         </Text>
       </View>
     </View>
@@ -535,6 +664,60 @@ function VitalsRow({
           {unit}
         </Text>
       </View>
+    </View>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  unit,
+}: {
+  title: string;
+  value: string;
+  unit: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        gap: 6,
+      }}
+    >
+      <Text
+        selectable={false}
+        style={{
+          color: C.faint,
+          fontFamily: MONO,
+          fontSize: 10,
+          letterSpacing: 1.4,
+        }}
+      >
+        {title}
+      </Text>
+      <Text
+        selectable={false}
+        style={{ color: C.text, fontSize: 22, lineHeight: 24, fontFamily: SERIF }}
+      >
+        {value}
+      </Text>
+      <Text
+        selectable={false}
+        style={{
+          color: C.faint,
+          fontFamily: MONO,
+          fontSize: 10,
+          letterSpacing: 1.2,
+        }}
+      >
+        {unit}
+      </Text>
     </View>
   );
 }

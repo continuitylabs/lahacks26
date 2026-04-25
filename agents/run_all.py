@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from uagents import Bureau
 
+import call_bridge
+
 from northstar_agents import (
     contact_orchestrator,
     location_scout,
@@ -20,6 +22,8 @@ from northstar_agents import (
 
 
 def main() -> None:
+    call_bridge.start_bridge_server()
+
     # Bureau owns the asyncio loop and the lifecycle of every agent it owns.
     bureau = Bureau()
     bureau.add(location_scout.agent)
@@ -30,6 +34,7 @@ def main() -> None:
     print("─" * 72)
     print("Northstar agent network — local Bureau")
     print("─" * 72)
+    print("  Call bridge:           http://127.0.0.1:8787/call")
     print(f"  Rescue Coordinator:    {rescue_coordinator.agent.address}")
     print(f"  Location Scout:        {location_scout.agent.address}")
     print(f"  Medical Coordinator:   {medical_coordinator.agent.address}")

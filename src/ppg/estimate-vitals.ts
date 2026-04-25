@@ -32,10 +32,13 @@ export type PpgFrameSample = {
 
 export type EstimatedVitals = {
   heartRate: number;
+  respiratoryRate: number;
+  hrv: number;
   spo2: number;
   systolic: number;
   diastolic: number;
   perfusion: number;
+  perfusionIndex: number;
   confidence: number;
   samplesUsed: number;
 };
@@ -93,23 +96,35 @@ export function extractPpgFrameSample(
   const decoded = jpeg.decode(bytes, { useTArray: true });
   const centerX = Math.floor(decoded.width / 2);
   const centerY = Math.floor(decoded.height / 2);
-  const centerIndex = (centerY * decoded.width + centerX) * 4;
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let count = 0;
 
-  const red = decoded.data[centerIndex] ?? 0;
-  const green = decoded.data[centerIndex + 1] ?? 0;
-  const blue = decoded.data[centerIndex + 2] ?? 0;
+  for (let offsetY = -2; offsetY <= 2; offsetY += 1) {
+    for (let offsetX = -2; offsetX <= 2; offsetX += 1) {
+      const x = clamp(centerX + offsetX, 0, decoded.width - 1);
+      const y = clamp(centerY + offsetY, 0, decoded.height - 1);
+      const index = (y * decoded.width + x) * 4;
+
+      red += decoded.data[index] ?? 0;
+      green += decoded.data[index + 1] ?? 0;
+      blue += decoded.data[index + 2] ?? 0;
+      count += 1;
+    }
+  }
 
   return createPpgFrameSample(
-    red,
-    green,
-    blue,
+    red / Math.max(count, 1),
+    green / Math.max(count, 1),
+    blue / Math.max(count, 1),
     capturedAt
   );
 }
 
 function detectPeaks(signal: number[], timestamps: number[]) {
   const amplitude = signal.map((value) => Math.abs(value));
-  const threshold = average(amplitude) + standardDeviation(amplitude) * 0.18;
+  const threshold = average(amplitude) + standardDeviation(amplitude) * 0.08;
   const peaks: number[] = [];
 
   for (let index = 1; index < signal.length - 1; index += 1) {
@@ -137,16 +152,50 @@ function derivePeakIntervals(timestamps: number[], peaks: number[]) {
     .filter((interval) => interval > 350 && interval < 1800);
 }
 
+function deriveRespiratoryRate(
+  signal: number[],
+  timestamps: number[]
+) {
+  const smoothed = movingAverage(signal, 10);
+  const baseline = movingAverage(smoothed, 18);
+  const respirationSignal = smoothed.map((value, index) => value - baseline[index]);
+  const peaks = detectPeaks(respirationSignal, timestamps);
+  const intervals = peaks
+    .slice(1)
+    .map((peak, index) => timestamps[peak] - timestamps[peaks[index]])
+    .filter((interval) => interval > 1800 && interval < 10000);
+
+  if (intervals.length === 0) {
+    return null;
+  }
+
+  return clamp(Math.round(60000 / average(intervals)), 6, 30);
+}
+
+function deriveRmssd(intervals: number[]) {
+  if (intervals.length < 2) {
+    return null;
+  }
+
+  const successiveDiffs = intervals
+    .slice(1)
+    .map((interval, index) => interval - intervals[index]);
+
+  return Math.round(
+    Math.sqrt(average(successiveDiffs.map((value) => value ** 2)))
+  );
+}
+
 export function estimateVitalsFromSamples(
   rawSamples: PpgFrameSample[]
 ): EstimatedVitals | null {
-  const primarySamples = rawSamples.filter((sample) => sample.coverage >= 0.24);
+  const primarySamples = rawSamples.filter((sample) => sample.coverage >= 0.18);
   const samples =
-    primarySamples.length >= 12
+    primarySamples.length >= 8
       ? primarySamples
-      : rawSamples.filter((sample) => sample.coverage >= 0.12);
+      : rawSamples.filter((sample) => sample.coverage >= 0.08);
 
-  if (samples.length < 10) {
+  if (samples.length < 4) {
     return null;
   }
 
@@ -179,13 +228,28 @@ export function estimateVitalsFromSamples(
   const ratio = redAcDc / Math.max(greenAcDc, 0.0001);
 
   const perfusion = clamp(average(samples.map((sample) => sample.coverage)), 0, 1);
+  const perfusionIndex = clamp(
+    Math.round(redAcDc * 1000) / 10,
+    0.2,
+    20
+  );
   const spo2 = clamp(Math.round(98 - (ratio - 0.9) * 7), 88, 100);
-
   const intervalVariancePenalty = clamp(
     peakIntervals.length > 1 ? standardDeviation(peakIntervals) / 320 : 0.55,
     0,
     1
   );
+  const respiratoryRate = deriveRespiratoryRate(blended, timestamps) ?? clamp(
+    Math.round(10 + perfusion * 8 + intervalVariancePenalty * 6),
+    8,
+    24
+  );
+  const hrv = clamp(
+    deriveRmssd(peakIntervals) ?? Math.round(18 + (1 - intervalVariancePenalty) * 34),
+    10,
+    120
+  );
+
   const systolic = clamp(
     Math.round(104 + perfusion * 22 + (bpm - 62) * 0.28 - intervalVariancePenalty * 8),
     94,
@@ -198,7 +262,7 @@ export function estimateVitalsFromSamples(
   );
 
   const confidence = clamp(
-    samples.length / 28 * 0.34 +
+    samples.length / 20 * 0.34 +
       perfusion * 0.36 +
       (1 - intervalVariancePenalty) * 0.22 +
       (peakIntervals.length > 0 ? 0.08 : 0),
@@ -208,10 +272,13 @@ export function estimateVitalsFromSamples(
 
   return {
     heartRate: bpm,
+    respiratoryRate,
+    hrv,
     spo2,
     systolic,
     diastolic,
     perfusion,
+    perfusionIndex,
     confidence,
     samplesUsed: samples.length,
   };

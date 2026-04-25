@@ -8,7 +8,6 @@ import {
   type PpgFrameSample,
 } from '@/src/ppg/estimate-vitals';
 
-const CAPTURE_INTERVAL_MS = 0;
 const CAPTURE_WINDOW_MS = 14000;
 
 type ScanPhase =
@@ -22,10 +21,10 @@ type ScanPhase =
 const phaseMessage: Record<ScanPhase, string> = {
   idle: 'Cover the camera and flash completely with your fingertip.',
   warming: 'Hold steady while Northstar locks onto the pulse waveform.',
-  measuring: 'Keep even pressure. The pulse trace is stabilizing.',
+  measuring: 'Keep even pressure. Northstar is building a best-effort pulse trace.',
   processing: 'Turning the waveform into an on-device estimate…',
   complete: 'Reading ready.',
-  error: 'We could not get a stable pulse trace. Adjust your finger and try again.',
+  error: 'The pulse trace was weak. Adjust your finger seal and try again.',
 };
 
 export function usePpgVitals() {
@@ -35,6 +34,7 @@ export function usePpgVitals() {
   const [secondsRemaining, setSecondsRemaining] = useState(
     Math.ceil(CAPTURE_WINDOW_MS / 1000)
   );
+  const [framesAttempted, setFramesAttempted] = useState(0);
   const [samplesCaptured, setSamplesCaptured] = useState(0);
   const [latestFrame, setLatestFrame] = useState<PpgFrameSample | null>(null);
   const [result, setResult] = useState<EstimatedVitals | null>(null);
@@ -42,18 +42,17 @@ export function usePpgVitals() {
   const activeRef = useRef(false);
   const busyRef = useRef(false);
   const errorCountRef = useRef(0);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef<number | null>(null);
   const startedAtRef = useRef(0);
   const samplesRef = useRef<PpgFrameSample[]>([]);
-  const requestedAtRef = useRef(0);
 
   const stop = useCallback(() => {
     activeRef.current = false;
     busyRef.current = false;
 
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
   }, []);
 
@@ -65,6 +64,7 @@ export function usePpgVitals() {
     setProgress(0);
     setSignalStrength(0);
     setSecondsRemaining(Math.ceil(CAPTURE_WINDOW_MS / 1000));
+    setFramesAttempted(0);
     setSamplesCaptured(0);
     setLatestFrame(null);
     setResult(null);
@@ -85,22 +85,20 @@ export function usePpgVitals() {
     setPhase('complete');
   }, [stop]);
 
-  const queueNextFrame = useCallback(
-    (camera: CameraView, delay = CAPTURE_INTERVAL_MS) => {
-      if (!activeRef.current) {
-        return;
-      }
+  const queueNextFrame = useCallback((camera: CameraView) => {
+    if (!activeRef.current) {
+      return;
+    }
 
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+    }
 
-      timeoutRef.current = setTimeout(() => {
-        void captureLoop(camera);
-      }, delay);
-    },
-    []
-  );
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      void captureLoop(camera);
+    });
+  }, []);
 
   const captureLoop = useCallback(
     async (camera: CameraView) => {
@@ -109,75 +107,54 @@ export function usePpgVitals() {
       }
 
       busyRef.current = true;
-      requestedAtRef.current = Date.now();
 
       try {
-        await camera.takePictureAsync({
+        const snapshot = await camera.takePictureAsync({
           base64: true,
-          quality: 0.04,
+          quality: 0,
           shutterSound: false,
           skipProcessing: true,
-          onPictureSaved: (snapshot) => {
-            void (async () => {
-              try {
-                if (!activeRef.current) {
-                  return;
-                }
-
-                if (!snapshot.base64) {
-                  throw new Error('Missing frame payload');
-                }
-
-                errorCountRef.current = 0;
-
-                const now = Date.now();
-                const frame = extractPpgFrameSample(snapshot.base64, now);
-
-                setLatestFrame(frame);
-                setSignalStrength(frame.coverage);
-
-                if (frame.coverage >= 0.12) {
-                  samplesRef.current = [...samplesRef.current, frame];
-                  setSamplesCaptured(samplesRef.current.length);
-                }
-
-                const elapsed = now - startedAtRef.current;
-                const remaining = Math.max(CAPTURE_WINDOW_MS - elapsed, 0);
-
-                setProgress(Math.min(elapsed / CAPTURE_WINDOW_MS, 1));
-                setSecondsRemaining(Math.ceil(remaining / 1000));
-                setPhase(elapsed > 1800 ? 'measuring' : 'warming');
-
-                if (elapsed >= 7000) {
-                  const earlyEstimate = estimateVitalsFromSamples(samplesRef.current);
-                  if (earlyEstimate && earlyEstimate.confidence >= 0.56) {
-                    setResult(earlyEstimate);
-                    setPhase('complete');
-                    stop();
-                    return;
-                  }
-                }
-
-                if (elapsed >= CAPTURE_WINDOW_MS) {
-                  finish();
-                  return;
-                }
-              } catch {
-                errorCountRef.current += 1;
-
-                if (errorCountRef.current >= 6) {
-                  finish();
-                  return;
-                }
-              } finally {
-                busyRef.current = false;
-              }
-
-              const elapsedSinceRequest = Date.now() - requestedAtRef.current;
-              queueNextFrame(camera, Math.max(0, CAPTURE_INTERVAL_MS - elapsedSinceRequest));
-            })();
-          },
         });
+
+        if (!snapshot.base64) {
+          throw new Error('Missing frame payload');
+        }
+
+        errorCountRef.current = 0;
+
+        const now = Date.now();
+        const frame = extractPpgFrameSample(snapshot.base64, now);
+
+        setFramesAttempted((count) => count + 1);
+        setLatestFrame(frame);
+        setSignalStrength(frame.coverage);
+
+        if (frame.coverage >= 0.08) {
+          samplesRef.current = [...samplesRef.current, frame];
+          setSamplesCaptured(samplesRef.current.length);
+        }
+
+        const elapsed = now - startedAtRef.current;
+        const remaining = Math.max(CAPTURE_WINDOW_MS - elapsed, 0);
+
+        setProgress(Math.min(elapsed / CAPTURE_WINDOW_MS, 1));
+        setSecondsRemaining(Math.ceil(remaining / 1000));
+        setPhase(elapsed > 1800 ? 'measuring' : 'warming');
+
+        if (elapsed >= 5000) {
+          const earlyEstimate = estimateVitalsFromSamples(samplesRef.current);
+          if (earlyEstimate && earlyEstimate.confidence >= 0.28) {
+            setResult(earlyEstimate);
+            setPhase('complete');
+            stop();
+            return;
+          }
+        }
+
+        if (elapsed >= CAPTURE_WINDOW_MS) {
+          finish();
+          return;
+        }
       } catch {
         busyRef.current = false;
         errorCountRef.current += 1;
@@ -186,9 +163,11 @@ export function usePpgVitals() {
           finish();
           return;
         }
-
-        queueNextFrame(camera);
+      } finally {
+        busyRef.current = false;
       }
+
+      queueNextFrame(camera);
     },
     [finish, queueNextFrame, stop]
   );
@@ -203,7 +182,7 @@ export function usePpgVitals() {
       activeRef.current = true;
       startedAtRef.current = Date.now();
       setPhase('warming');
-      queueNextFrame(camera, 0);
+      queueNextFrame(camera);
     },
     [queueNextFrame, reset]
   );
@@ -215,6 +194,7 @@ export function usePpgVitals() {
     progress,
     signalStrength,
     secondsRemaining,
+    framesAttempted,
     samplesCaptured,
     latestFrame,
     result,
