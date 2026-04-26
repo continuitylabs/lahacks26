@@ -6,6 +6,7 @@ export type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  thinking?: string;
 };
 
 export type LoadStatus =
@@ -14,9 +15,11 @@ export type LoadStatus =
   | { kind: 'ready' }
   | { kind: 'error'; message: string };
 
-const MODEL_ID = 'Steve/Qwen3.5-2B';
+const MODEL_ID = 'Steve/Qwen3.5-4B';
 
-const SYSTEM_PROMPT = '';
+const SYSTEM_PROMPT =
+  'You are a helpful assistant that helps the user with hiking injuries.';
+// 'Your thinking must be no more than 1 sentence. You are a helpful assistant that helps the user with hiking injuries.';
 
 // ~4 chars/token, targeting ~30k input tokens to leave room for generation within Qwen3's 32k window
 const MAX_PROMPT_CHARS = 120000;
@@ -36,17 +39,62 @@ function buildPrompt(history: ChatMessage[], system: string): string {
     lines.unshift(line);
     length += line.length;
   }
-  return `${systemLine}${lines.join('\n')}<|im_start|>assistant\n<think>\n\n</think>\n\n`;
+  return `${systemLine}${lines.join('\n')}<|im_start|>assistant<think>Okay i will respond to this message.</think>\n`;
 }
 
 function makeId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function parseStream(raw: string): {
+  thinking: string;
+  response: string;
+  isThinking: boolean;
+} {
+  const close = raw.indexOf('</think>');
+  if (close === -1) {
+    const open = raw.indexOf('<think>');
+    if (open !== -1) {
+      return {
+        thinking: raw.slice(open + '<think>'.length),
+        response: raw.slice(0, open),
+        isThinking: true,
+      };
+    }
+    // No tags yet — Qwen3 often starts thinking without emitting <think>,
+    // so treat the whole stream as thinking until </think> arrives.
+    return { thinking: raw, response: '', isThinking: true };
+  }
+  const open = raw.lastIndexOf('<think>', close);
+  if (open !== -1) {
+    return {
+      thinking: raw.slice(open + '<think>'.length, close),
+      response: (
+        raw.slice(0, open) + raw.slice(close + '</think>'.length)
+      ).replace(/^\s+/, ''),
+      isThinking: false,
+    };
+  }
+  return {
+    thinking: raw.slice(0, close),
+    response: raw.slice(close + '</think>'.length).replace(/^\s+/, ''),
+    isThinking: false,
+  };
+}
+
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).length;
+}
+
 export function useZeticChat() {
   const [status, setStatus] = useState<LoadStatus>({ kind: 'idle' });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [stream, setStream] = useState('');
+  const [thinking, setThinking] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const [thinkingWords, setThinkingWords] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
 
   const streamRef = useRef('');
@@ -62,7 +110,11 @@ export function useZeticChat() {
         );
       } else if (event.type === 'token') {
         streamRef.current += event.token;
-        setStream(streamRef.current);
+        const parsed = parseStream(streamRef.current);
+        setStream(parsed.response);
+        setThinking(parsed.thinking);
+        setIsThinking(parsed.isThinking);
+        setThinkingWords(countWords(parsed.thinking));
       } else if (event.type === 'complete') {
         // generation finalized via the generate() promise resolving
       } else if (event.type === 'error') {
@@ -111,16 +163,24 @@ export function useZeticChat() {
       setMessages(next);
       streamRef.current = '';
       setStream('');
+      setThinking('');
+      setIsThinking(false);
+      setThinkingWords(0);
       setIsGenerating(true);
 
       const prompt = buildPrompt(next, SYSTEM_PROMPT);
       try {
         const full = await Zetic.generate(prompt);
-        const finalText = full || streamRef.current;
-        if (finalText) {
+        const parsed = parseStream(full || streamRef.current);
+        if (parsed.response || parsed.thinking) {
           setMessages((m) => [
             ...m,
-            { id: makeId(), role: 'assistant', text: finalText },
+            {
+              id: makeId(),
+              role: 'assistant',
+              text: parsed.response,
+              thinking: parsed.thinking.trim() || undefined,
+            },
           ]);
         }
       } catch (err) {
@@ -132,6 +192,9 @@ export function useZeticChat() {
       } finally {
         streamRef.current = '';
         setStream('');
+        setThinking('');
+        setIsThinking(false);
+        setThinkingWords(0);
         setIsGenerating(false);
       }
     },
@@ -141,15 +204,23 @@ export function useZeticChat() {
   const stop = useCallback(async () => {
     if (!isGenerating) return;
     await Zetic.stop();
-    const partial = streamRef.current;
-    if (partial) {
+    const parsed = parseStream(streamRef.current);
+    if (parsed.response || parsed.thinking) {
       setMessages((m) => [
         ...m,
-        { id: makeId(), role: 'assistant', text: partial },
+        {
+          id: makeId(),
+          role: 'assistant',
+          text: parsed.response,
+          thinking: parsed.thinking.trim() || undefined,
+        },
       ]);
     }
     streamRef.current = '';
     setStream('');
+    setThinking('');
+    setIsThinking(false);
+    setThinkingWords(0);
     setIsGenerating(false);
   }, [isGenerating]);
 
@@ -158,5 +229,17 @@ export function useZeticChat() {
     setMessages([]);
   }, [isGenerating]);
 
-  return { status, messages, stream, isGenerating, load, send, stop, clear };
+  return {
+    status,
+    messages,
+    stream,
+    thinking,
+    isGenerating,
+    isThinking,
+    thinkingWords,
+    load,
+    send,
+    stop,
+    clear,
+  };
 }

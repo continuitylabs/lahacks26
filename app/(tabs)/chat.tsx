@@ -46,8 +46,19 @@ const C = {
 };
 
 export default function Chat() {
-  const { status, messages, stream, isGenerating, load, send, stop, clear } =
-    useZeticChat();
+  const {
+    status,
+    messages,
+    stream,
+    thinking,
+    isGenerating,
+    isThinking,
+    thinkingWords,
+    load,
+    send,
+    stop,
+    clear,
+  } = useZeticChat();
   const [input, setInput] = useState('');
   const scrollRef = useRef<RNScrollView | null>(null);
   const insets = useSafeAreaInsets();
@@ -221,10 +232,24 @@ export default function Chat() {
           ) : null}
 
           {messages.map((m) => (
-            <Bubble key={m.id} role={m.role} text={m.text} />
+            <Bubble
+              key={m.id}
+              role={m.role}
+              text={m.text}
+              thinkingText={m.thinking}
+            />
           ))}
 
-          {isGenerating ? <Bubble role="assistant" text={stream} streaming /> : null}
+          {isGenerating ? (
+            <Bubble
+              role="assistant"
+              text={stream}
+              streaming
+              thinkingActive={isThinking}
+              thinkingWords={thinkingWords}
+              thinkingText={thinking}
+            />
+          ) : null}
         </RNScrollView>
 
         <View
@@ -509,12 +534,26 @@ function Bubble({
   role,
   text,
   streaming,
+  thinkingActive,
+  thinkingWords,
+  thinkingText,
 }: {
   role: 'user' | 'assistant';
   text: string;
   streaming?: boolean;
+  thinkingActive?: boolean;
+  thinkingWords?: number;
+  thinkingText?: string;
 }) {
   const isUser = role === 'user';
+  const [showThinking, setShowThinking] = useState(false);
+  const hasThinkingContent = !!thinkingText && thinkingText.trim().length > 0;
+  const wordCount =
+    thinkingWords ??
+    (hasThinkingContent ? thinkingText!.trim().split(/\s+/).length : 0);
+  const showThinkingBar = !isUser && (thinkingActive || hasThinkingContent);
+  const showSpinner = streaming && text.length === 0;
+
   return (
     <View
       style={{
@@ -536,9 +575,52 @@ function Bubble({
           borderColor: C.edge,
         }}
       >
-        {text.length === 0 && streaming ? (
+        {showThinkingBar ? (
+          <View style={{ marginBottom: text.length > 0 || showThinking ? 8 : 0 }}>
+            <Pressable
+              onPress={() => setShowThinking((s) => !s)}
+              disabled={!hasThinkingContent}
+              style={({ pressed }) => ({
+                opacity: pressed && hasThinkingContent ? 0.6 : 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+              })}
+            >
+              {showSpinner ? <ActivityIndicator color={C.muted} /> : null}
+              <Text
+                selectable={false}
+                style={{
+                  fontFamily: MONO,
+                  color: C.faint,
+                  fontSize: 11,
+                  letterSpacing: 1.8,
+                }}
+              >
+                THINKING · {wordCount} {wordCount === 1 ? 'WORD' : 'WORDS'}
+                {hasThinkingContent ? (showThinking ? '  ▾' : '  ▸') : ''}
+              </Text>
+            </Pressable>
+            {showThinking && hasThinkingContent ? (
+              <Text
+                selectable
+                style={{
+                  marginTop: 6,
+                  color: C.muted,
+                  fontSize: 13,
+                  lineHeight: 19,
+                  fontStyle: 'italic',
+                }}
+              >
+                {thinkingText}
+              </Text>
+            ) : null}
+          </View>
+        ) : showSpinner ? (
           <ActivityIndicator color={C.muted} />
-        ) : (
+        ) : null}
+
+        {text.length > 0 ? (
           <Text
             selectable
             style={{
@@ -550,7 +632,7 @@ function Bubble({
             {text}
             {streaming ? <Text style={{ color: C.faint }}>▍</Text> : null}
           </Text>
-        )}
+        ) : null}
       </View>
     </View>
   );
