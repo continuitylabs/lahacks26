@@ -27,12 +27,7 @@ const LABELS: Record<IconName, string> = {
 const COLOR_STAR = '#F0B86E';
 const COLOR_TEXT = '#F5EFE4';
 const COLOR_FAINT = 'rgba(245, 239, 228, 0.4)';
-const MONO =
-  Platform.OS === 'ios'
-    ? 'ui-monospace'
-    : Platform.OS === 'android'
-      ? 'monospace'
-      : "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
+const MONO: string | undefined = undefined;
 
 /**
  * Floating glass tab bar that sits over the map.

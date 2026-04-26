@@ -17,8 +17,7 @@ const SERIF =
       ? 'serif'
       : "Georgia, 'Times New Roman', serif";
 
-const MONO =
-  Platform.OS === 'ios' ? 'ui-monospace' : 'monospace';
+const MONO: string | undefined = undefined;
 
 const C = {
   void: '#0b0e12',

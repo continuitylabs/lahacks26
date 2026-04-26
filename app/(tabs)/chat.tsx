@@ -19,12 +19,7 @@ import { Pressable, Text, TextInput, View } from '@/src/tw';
 // excluding the safe-area inset which we add separately.
 const TAB_BAR_HEIGHT = 72;
 
-const MONO =
-  Platform.OS === 'ios'
-    ? 'ui-monospace'
-    : Platform.OS === 'android'
-      ? 'monospace'
-      : 'monospace';
+const MONO: string | undefined = undefined;
 
 const SERIF =
   Platform.OS === 'ios'

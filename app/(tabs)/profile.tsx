@@ -23,7 +23,7 @@ const SERIF =
       ? 'serif'
       : "Georgia, 'Times New Roman', serif";
 
-const MONO = Platform.OS === 'ios' ? 'ui-monospace' : 'monospace';
+const MONO: string | undefined = undefined;
 
 const C = {
   text: '#F5EFE4',

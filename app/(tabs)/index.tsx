@@ -19,12 +19,7 @@ import { useCurrentLocation } from '@/hooks/use-current-location';
 import { useProfileState } from '@/src/lib/profile-store-provider';
 import { Pressable, Text, View } from '@/src/tw';
 
-const MONO =
-  Platform.OS === 'ios'
-    ? 'ui-monospace'
-    : Platform.OS === 'android'
-      ? 'monospace'
-      : 'monospace';
+const MONO: string | undefined = undefined;
 
 const SANS =
   Platform.OS === 'ios'
