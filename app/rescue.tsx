@@ -66,9 +66,9 @@ const AGENT_TIMEOUT_MS = 30_000;
 // path. We hold even a fast success here so the user can read what the
 // agents produced before the call screen takes over.
 const MIN_DWELL_MS = 15_000;
-// Brief tail after the network settles on the success path so the "Plan
-// ready" state lands before we move on.
-const SUCCESS_TAIL_MS = 1200;
+// How long to hold the "Plan ready" state after agents complete so the user
+// can read the results before the call screen takes over.
+const SUCCESS_TAIL_MS = 8_000;
 
 const NORTHSTAR_URL =
   process.env.EXPO_PUBLIC_NORTHSTAR_URL || 'http://127.0.0.1:8000';
