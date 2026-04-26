@@ -17,7 +17,7 @@ export type LoadStatus =
 
 const MODEL_ID = 'Qwen/Qwen3-4B';
 
-const SYSTEM_PROMPT = `You are a helpful assistant that helps the user with hiking emergencies in remote locations. This is a voice to voice conversation so do not use any markdown formatting or emojis. Do not overthink (usually one or two short sentences of thinking is enough (one paragraph max (150 words max))). Make sure to respond with only one question at a time. You give suggestions in your responses as well.
+const DEFAULT_SYSTEM_PROMPT = `You are a helpful assistant that helps the user with hiking emergencies in remote locations. This is a voice to voice conversation so do not use any markdown formatting or emojis. Do not overthink (usually one or two short sentences of thinking is enough (one paragraph max (150 words max))). Make sure to respond with only one question at a time. You give suggestions in your responses as well.
 
 Use the SALT method to assess the user's current state through your questioning, progressing through these phases in order:
 
@@ -101,7 +101,13 @@ function countWords(text: string): number {
   return trimmed.split(/\s+/).length;
 }
 
-export function useZeticChat() {
+export type UseZeticChatOptions = {
+  /** Override the system prompt. Defaults to the SALT-method emergency prompt. */
+  systemPrompt?: string;
+};
+
+export function useZeticChat(options?: UseZeticChatOptions) {
+  const systemPrompt = options?.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   const [status, setStatus] = useState<LoadStatus>({ kind: 'idle' });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [stream, setStream] = useState('');
@@ -181,7 +187,7 @@ export function useZeticChat() {
       setThinkingWords(0);
       setIsGenerating(true);
 
-      const prompt = buildPrompt(next, SYSTEM_PROMPT);
+      const prompt = buildPrompt(next, systemPrompt);
       try {
         const full = await Zetic.generate(prompt);
         const parsed = parseStream(full || streamRef.current);
@@ -211,7 +217,7 @@ export function useZeticChat() {
         setIsGenerating(false);
       }
     },
-    [isGenerating, messages, status.kind],
+    [isGenerating, messages, status.kind, systemPrompt],
   );
 
   const stop = useCallback(async () => {
