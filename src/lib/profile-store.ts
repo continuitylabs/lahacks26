@@ -37,8 +37,6 @@ export type LastCoords = {
 export type LastVitals = {
   heartRate: number;
   spo2: number;
-  systolic: number;
-  diastolic: number;
   confidence: number;
   capturedAt: number;
 };
@@ -81,8 +79,6 @@ export type IncidentCoordsSlice = {
 export type IncidentVitalsSlice = {
   heartRate: number;
   spo2: number;
-  systolic: number;
-  diastolic: number;
   confidence: number;
   capturedAt: number;
 };

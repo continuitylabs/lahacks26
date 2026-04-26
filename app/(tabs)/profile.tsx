@@ -473,7 +473,7 @@ function LastBeaconCard() {
           {session.lastVitals ? (
             <BeaconRow
               label="VITALS"
-              value={`${session.lastVitals.heartRate} BPM  •  ${session.lastVitals.spo2}% SpO2  •  ${session.lastVitals.systolic}/${session.lastVitals.diastolic} mmHg`}
+              value={`${session.lastVitals.heartRate} BPM  •  ${session.lastVitals.spo2}% SpO2`}
               meta={formatRelative(session.lastVitals.capturedAt)}
             />
           ) : null}

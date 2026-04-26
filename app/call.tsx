@@ -74,7 +74,7 @@ export default function Call() {
       summary.push(`Findings: ${triage.findings.join(', ')}`);
     if (vitals)
       summary.push(
-        `Vitals: HR ${vitals.heartRate} bpm, SpO2 ${vitals.spo2}%, BP ${vitals.systolic}/${vitals.diastolic}`
+        `Vitals: HR ${vitals.heartRate} bpm, SpO2 ${vitals.spo2}%`
       );
     if (incident?.agentReport?.rescueScript)
       summary.push(
@@ -108,8 +108,6 @@ export default function Call() {
         spo2: vitals?.spo2 ?? null,
         respiratoryRate: null,
         hrv: null,
-        systolic: vitals?.systolic ?? null,
-        diastolic: vitals?.diastolic ?? null,
         perfusionIndex: null,
       },
       summary,
@@ -243,7 +241,7 @@ export default function Call() {
     }
     if (incident?.vitals) {
       lines.push(
-        `Vitals: pulse ${incident.vitals.heartRate} bpm, oxygen ${incident.vitals.spo2}%, blood pressure ${incident.vitals.systolic}/${incident.vitals.diastolic}.`
+        `Vitals: pulse ${incident.vitals.heartRate} bpm, oxygen ${incident.vitals.spo2}%.`
       );
     }
     lines.push('Please dispatch help and stand by for further updates.');

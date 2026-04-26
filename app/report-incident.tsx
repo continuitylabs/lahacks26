@@ -1,15 +1,20 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Platform } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView as RNScrollView,
+} from 'react-native';
 
 import { GlassCard } from '@/components/glass-card';
-import {
-  dummyCoords,
-  dummyTriage,
-  dummyVitals,
-} from '@/src/lib/dummy-incident';
+import { useSpeechOutput } from '@/hooks/use-speech-output';
+import { useVoiceInput } from '@/hooks/use-voice-input';
+import { useZeticChat } from '@/hooks/use-zetic-chat';
+import { dummyTriage } from '@/src/lib/dummy-incident';
 import { useProfileState } from '@/src/lib/profile-store-provider';
-import { Pressable, Text, View } from '@/src/tw';
+import { Pressable, Text, TextInput, View } from '@/src/tw';
 
 const SERIF =
   Platform.OS === 'ios'
@@ -36,26 +41,125 @@ const C = {
   starDeep: '#C98A3F',
   edge: 'rgba(255,255,255,0.18)',
   glass: 'rgba(255,255,255,0.08)',
+  bubbleAi: 'rgba(255,255,255,0.06)',
   void: '#0b0e12',
 };
+
+const INTRO_MESSAGE =
+  "I see you've been injured. Please describe the injury and what happened.";
 
 export default function ReportIncident() {
   const router = useRouter();
   const { startIncident, updateIncident } = useProfileState();
 
-  const skipToRescue = () => {
+  const {
+    status,
+    messages,
+    stream,
+    thinking,
+    isGenerating,
+    isThinking,
+    thinkingWords,
+    load,
+    send,
+    stop,
+    seedAssistant,
+  } = useZeticChat();
+  const [input, setInput] = useState('');
+  const scrollRef = useRef<RNScrollView | null>(null);
+
+  const speech = useSpeechOutput();
+  const voice = useVoiceInput({
+    silenceMs: 2500,
+    onPartial: (text) => setInput(text),
+    onFinal: (text) => {
+      setInput('');
+      send(text);
+    },
+  });
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Open the conversation with the fixed intro the moment the model is
+  // ready. Seed-once: the hook ignores the call if anything is already
+  // present (e.g. on remount).
+  useEffect(() => {
+    if (status.kind === 'ready') {
+      seedAssistant(INTRO_MESSAGE);
+    }
+  }, [status.kind, seedAssistant]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollToEnd({ animated: true });
+  }, [messages.length, stream]);
+
+  const ready = status.kind === 'ready';
+  const canSend = ready && !isGenerating && input.trim().length > 0;
+  const isListening =
+    voice.state === 'listening' || voice.state === 'requesting';
+  const canVoice = ready && !isGenerating;
+
+  const voiceCancel = voice.cancel;
+  const voiceStart = voice.start;
+  const speechSpeak = speech.speak;
+
+  useEffect(() => {
+    if (isGenerating) voiceCancel();
+  }, [isGenerating, voiceCancel]);
+
+  const lastSpokenIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isGenerating) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return;
+    if (lastSpokenIdRef.current === last.id) return;
+    lastSpokenIdRef.current = last.id;
+    speechSpeak(last.text);
+  }, [messages, isGenerating, speechSpeak]);
+
+  const lastTickRef = useRef(speech.completionTick);
+  useEffect(() => {
+    if (speech.completionTick === lastTickRef.current) return;
+    lastTickRef.current = speech.completionTick;
+    if (ready && !isGenerating && !isListening && speech.enabled) {
+      voiceStart();
+    }
+  }, [
+    speech.completionTick,
+    speech.enabled,
+    ready,
+    isGenerating,
+    isListening,
+    voiceStart,
+  ]);
+
+  const toggleVoice = useCallback(() => {
+    if (isListening) {
+      voice.stop();
+    } else {
+      voice.start();
+    }
+  }, [isListening, voice]);
+
+  const skipTriage = () => {
+    voiceCancel();
+    speech.stop();
     startIncident('manual');
-    // startIncident is async; the next tick has the new incident in storage.
-    // updateIncident is a no-op when the incident isn't yet present, so we
-    // wait one paint via setTimeout(0) to let the persistence settle.
+    // Demo bypass for the LLM step only: stamp dummy triage notes and hand
+    // off to the vitals scan, which has its own SKIP for the PPG step.
     setTimeout(() => {
-      updateIncident({
-        triage: dummyTriage(),
-        vitals: dummyVitals(),
-        coords: dummyCoords(),
-      });
-      router.replace('/rescue');
+      updateIncident({ triage: dummyTriage() });
+      router.replace('/triage');
     }, 0);
+  };
+
+  const continueToTriage = () => {
+    voiceCancel();
+    speech.stop();
+    startIncident('manual');
+    router.replace('/triage');
   };
 
   return (
@@ -65,45 +169,99 @@ export default function ReportIncident() {
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
       />
 
-      <View
-        style={{
-          flex: 1,
-          paddingHorizontal: 24,
-          paddingTop: 64,
-          paddingBottom: 40,
-        }}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View
           style={{
+            paddingHorizontal: 24,
+            paddingTop: 64,
+            paddingBottom: 12,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}
         >
-          <Text
-            selectable={false}
-            style={{
-              fontSize: 11,
-              letterSpacing: 3,
-              color: C.faint,
-              fontFamily: MONO,
-            }}
-          >
-            INCIDENT REPORT
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View>
+            <Text
+              selectable={false}
+              style={{
+                fontSize: 11,
+                letterSpacing: 3,
+                color: C.faint,
+                fontFamily: MONO,
+              }}
+            >
+              INCIDENT REPORT
+            </Text>
+            <Text
+              selectable={false}
+              style={{
+                marginTop: 4,
+                fontFamily: MONO,
+                color: C.faint,
+                fontSize: 10,
+                letterSpacing: 2.4,
+              }}
+            >
+              ON-DEVICE · QWEN3-4B
+            </Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Pressable
-              onPress={skipToRescue}
+              onPress={speech.toggleEnabled}
+              style={({ pressed }) => ({
+                opacity: pressed ? 0.6 : 1,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: speech.enabled
+                  ? speech.isSpeaking
+                    ? C.star
+                    : C.edge
+                  : C.edge,
+                backgroundColor: speech.isSpeaking
+                  ? 'rgba(240,184,110,0.14)'
+                  : 'transparent',
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+              })}
+            >
+              <Text
+                selectable={false}
+                style={{
+                  fontFamily: MONO,
+                  color: speech.enabled
+                    ? speech.isSpeaking
+                      ? C.star
+                      : C.muted
+                    : C.faint,
+                  fontSize: 10,
+                  letterSpacing: 2,
+                }}
+              >
+                {speech.enabled
+                  ? speech.isSpeaking
+                    ? 'SPEAKING'
+                    : 'VOICE'
+                  : 'MUTED'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={skipTriage}
               style={{
                 borderRadius: 999,
                 borderWidth: 1,
                 borderColor: C.starDeep,
                 backgroundColor: 'rgba(240,184,110,0.12)',
                 paddingHorizontal: 12,
-                paddingVertical: 4,
+                paddingVertical: 6,
               }}
             >
               <Text
+                selectable={false}
                 style={{
                   fontSize: 11,
                   letterSpacing: 1.6,
@@ -122,154 +280,449 @@ export default function ReportIncident() {
                 borderColor: C.edge,
                 backgroundColor: C.glass,
                 paddingHorizontal: 12,
-                paddingVertical: 4,
+                paddingVertical: 6,
               }}
             >
-              <Text style={{ fontSize: 12, color: C.muted }}>Cancel</Text>
+              <Text
+                selectable={false}
+                style={{ fontSize: 11, color: C.muted, fontFamily: MONO, letterSpacing: 1.6 }}
+              >
+                CANCEL
+              </Text>
             </Pressable>
           </View>
         </View>
 
-        <View style={{ marginTop: 40, gap: 8 }}>
-          <Text
-            selectable={false}
-            style={{ fontFamily: SERIF, fontSize: 36, color: C.text, lineHeight: 42 }}
-          >
-            Are you okay?
-          </Text>
-          <Text
-            selectable={false}
-            style={{ fontSize: 16, lineHeight: 24, color: C.muted }}
-          >
-            Tell Northstar what happened. The next steps run on-device — no
-            signal required.
-          </Text>
-        </View>
-
-        <View style={{ marginTop: 32, gap: 12 }}>
-          <Step
-            number="1"
-            title="Triage"
-            body="Cover the rear camera and flash with your fingertip. Northstar reads a pulse waveform on-device to estimate oxygen saturation and blood pressure trend."
-            chip="ZETIC"
-          />
-          <Step
-            number="2"
-            title="Coordinate"
-            body="When any signal returns, three Fetch.ai agents draft a precise rescue report in parallel."
-            chip="FETCH.AI"
-          />
-          <Step
-            number="3"
-            title="Call"
-            body="Read it yourself, or let Northstar read it to dispatch while you stay on the line."
-            chip="ELEVENLABS"
-          />
-        </View>
-
-        <View style={{ flex: 1 }} />
-
-        <Pressable
-          onPress={() => {
-            startIncident('manual');
-            router.replace('/triage');
+        <RNScrollView
+          ref={scrollRef}
+          contentContainerStyle={{
+            paddingHorizontal: 20,
+            paddingBottom: 12,
+            gap: 12,
           }}
-          style={({ pressed }) => ({
-            borderRadius: 999,
-            borderCurve: 'continuous',
-            backgroundColor: C.star,
-            paddingHorizontal: 32,
-            paddingVertical: 18,
-            opacity: pressed ? 0.8 : 1,
-            shadowColor: C.star,
-            shadowOpacity: 0.4,
-            shadowRadius: 16,
-            shadowOffset: { width: 0, height: 0 },
-          })}
+          keyboardShouldPersistTaps="handled"
         >
+          {status.kind !== 'ready' ? <StatusBanner status={status} /> : null}
+
+          {messages.map((m) => (
+            <Bubble
+              key={m.id}
+              role={m.role}
+              text={m.text}
+              thinkingText={m.thinking}
+            />
+          ))}
+
+          {isGenerating ? (
+            <Bubble
+              role="assistant"
+              text={stream}
+              streaming
+              thinkingActive={isThinking}
+              thinkingWords={thinkingWords}
+              thinkingText={thinking}
+            />
+          ) : null}
+        </RNScrollView>
+
+        <View
+          style={{
+            paddingHorizontal: 20,
+            paddingTop: 8,
+            paddingBottom: 16,
+            gap: 10,
+          }}
+        >
+          {voice.state === 'error' && voice.error ? (
+            <Text
+              selectable={false}
+              style={{
+                fontFamily: MONO,
+                color: '#E5484D',
+                fontSize: 10,
+                letterSpacing: 1.6,
+                paddingHorizontal: 4,
+              }}
+            >
+              {voice.error.message}
+            </Text>
+          ) : null}
+
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-end',
+              gap: 8,
+              borderRadius: 24,
+              borderCurve: 'continuous',
+              borderWidth: 1,
+              borderColor: isListening ? C.star : C.edge,
+              backgroundColor: C.glass,
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+            }}
+          >
+            <TextInput
+              value={input}
+              onChangeText={setInput}
+              placeholder={
+                isListening
+                  ? 'Listening…'
+                  : ready
+                    ? 'Describe the injury…'
+                    : 'Loading model…'
+              }
+              placeholderTextColor={C.faint}
+              editable={ready && !isGenerating && !isListening}
+              multiline
+              style={{
+                flex: 1,
+                color: C.text,
+                fontSize: 16,
+                maxHeight: 120,
+                paddingVertical: 4,
+              }}
+            />
+
+            {!isGenerating ? (
+              <Pressable
+                onPress={toggleVoice}
+                disabled={!canVoice && !isListening}
+                style={({ pressed }) => ({
+                  opacity:
+                    !canVoice && !isListening ? 0.35 : pressed ? 0.7 : 1,
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: isListening ? C.star : 'transparent',
+                  borderWidth: 1,
+                  borderColor: isListening ? C.star : C.edge,
+                })}
+              >
+                <MicGlyph color={isListening ? C.void : C.muted} />
+              </Pressable>
+            ) : null}
+
+            {isGenerating ? (
+              <Pressable
+                onPress={stop}
+                style={({ pressed }) => ({
+                  opacity: pressed ? 0.7 : 1,
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#E5484D',
+                })}
+              >
+                <View
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 2,
+                    backgroundColor: C.text,
+                  }}
+                />
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={() => {
+                  const text = input;
+                  setInput('');
+                  send(text);
+                }}
+                disabled={!canSend}
+                style={({ pressed }) => ({
+                  opacity: !canSend ? 0.35 : pressed ? 0.7 : 1,
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: C.star,
+                })}
+              >
+                <Text
+                  selectable={false}
+                  style={{ color: C.void, fontSize: 18, lineHeight: 20 }}
+                >
+                  ↑
+                </Text>
+              </Pressable>
+            )}
+          </View>
+
+          <Pressable
+            onPress={continueToTriage}
+            style={({ pressed }) => ({
+              borderRadius: 999,
+              borderCurve: 'continuous',
+              backgroundColor: C.star,
+              paddingHorizontal: 32,
+              paddingVertical: 16,
+              opacity: pressed ? 0.8 : 1,
+              shadowColor: C.star,
+              shadowOpacity: 0.4,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 0 },
+            })}
+          >
+            <Text
+              selectable={false}
+              style={{
+                textAlign: 'center',
+                fontFamily: SANS,
+                fontSize: 16,
+                fontWeight: '700',
+                letterSpacing: 2.5,
+                color: C.void,
+              }}
+            >
+              BEGIN TRIAGE
+            </Text>
+          </Pressable>
+
           <Text
             selectable={false}
             style={{
               textAlign: 'center',
-              fontFamily: SANS,
-              fontSize: 16,
-              fontWeight: '700',
-              letterSpacing: 2.5,
-              color: C.void,
+              fontSize: 10,
+              letterSpacing: 3.6,
+              color: C.faint,
+              fontFamily: MONO,
             }}
           >
-            BEGIN TRIAGE
+            ON-DEVICE  •  OFFLINE-CAPABLE
           </Text>
-        </Pressable>
-
-        <Text
-          selectable={false}
-          style={{
-            marginTop: 12,
-            textAlign: 'center',
-            fontSize: 10,
-            letterSpacing: 3.6,
-            color: C.faint,
-            fontFamily: MONO,
-          }}
-        >
-          ON-DEVICE  •  OFFLINE-CAPABLE
-        </Text>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
-function Step({
-  number,
-  title,
-  body,
-  chip,
+function StatusBanner({
+  status,
 }: {
-  number: string;
-  title: string;
-  body: string;
-  chip: string;
+  status: ReturnType<typeof useZeticChat>['status'];
 }) {
+  if (status.kind === 'idle') return null;
+
+  if (status.kind === 'loading') {
+    const pct = Math.round(status.progress * 100);
+    const showPct = status.progress > 0 && status.progress < 1;
+    return (
+      <GlassCard style={{ paddingHorizontal: 18, paddingVertical: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <ActivityIndicator color={C.star} />
+          <View style={{ flex: 1 }}>
+            <Text
+              selectable={false}
+              style={{
+                fontFamily: MONO,
+                color: C.muted,
+                fontSize: 11,
+                letterSpacing: 2,
+              }}
+            >
+              {showPct ? `DOWNLOADING · ${pct}%` : 'LOADING MODEL'}
+            </Text>
+            {showPct ? (
+              <View
+                style={{
+                  marginTop: 8,
+                  height: 3,
+                  borderRadius: 2,
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  overflow: 'hidden',
+                }}
+              >
+                <View
+                  style={{
+                    width: `${pct}%`,
+                    height: '100%',
+                    backgroundColor: C.star,
+                  }}
+                />
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </GlassCard>
+    );
+  }
+
+  if (status.kind === 'error') {
+    return (
+      <GlassCard style={{ paddingHorizontal: 18, paddingVertical: 16 }}>
+        <Text
+          selectable={false}
+          style={{
+            fontFamily: MONO,
+            color: '#E5484D',
+            fontSize: 11,
+            letterSpacing: 2,
+          }}
+        >
+          ERROR
+        </Text>
+        <Text
+          selectable
+          style={{
+            marginTop: 6,
+            color: C.muted,
+            fontSize: 13,
+            lineHeight: 19,
+          }}
+        >
+          {status.message}
+        </Text>
+      </GlassCard>
+    );
+  }
+
+  return null;
+}
+
+function MicGlyph({ color }: { color: string }) {
   return (
-    <GlassCard
+    <View style={{ width: 14, height: 18, alignItems: 'center' }}>
+      <View
+        style={{
+          width: 8,
+          height: 11,
+          borderRadius: 4,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          marginTop: 2,
+          width: 12,
+          height: 1.5,
+          borderRadius: 1,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          marginTop: 1,
+          width: 6,
+          height: 1.5,
+          borderRadius: 1,
+          backgroundColor: color,
+        }}
+      />
+    </View>
+  );
+}
+
+function Bubble({
+  role,
+  text,
+  streaming,
+  thinkingActive,
+  thinkingWords,
+  thinkingText,
+}: {
+  role: 'user' | 'assistant';
+  text: string;
+  streaming?: boolean;
+  thinkingActive?: boolean;
+  thinkingWords?: number;
+  thinkingText?: string;
+}) {
+  const isUser = role === 'user';
+  const [showThinking, setShowThinking] = useState(false);
+  const hasThinkingContent = !!thinkingText && thinkingText.trim().length > 0;
+  const wordCount =
+    thinkingWords ??
+    (hasThinkingContent ? thinkingText!.trim().split(/\s+/).length : 0);
+  const showThinkingBar = !isUser && (thinkingActive || hasThinkingContent);
+  const showSpinner = streaming && text.length === 0;
+
+  return (
+    <View
       style={{
         flexDirection: 'row',
-        gap: 16,
-        paddingHorizontal: 20,
-        paddingVertical: 16,
+        justifyContent: isUser ? 'flex-end' : 'flex-start',
       }}
     >
-      <Text style={{ fontFamily: SERIF, fontSize: 30, color: C.star }}>
-        {number}
-      </Text>
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{ fontFamily: SERIF, fontSize: 18, color: C.text }}>
-            {title}
-          </Text>
+      <View
+        style={{
+          maxWidth: '86%',
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          borderRadius: 18,
+          borderCurve: 'continuous',
+          borderTopRightRadius: isUser ? 6 : 18,
+          borderTopLeftRadius: isUser ? 18 : 6,
+          backgroundColor: isUser ? C.star : C.bubbleAi,
+          borderWidth: isUser ? 0 : 1,
+          borderColor: C.edge,
+        }}
+      >
+        {showThinkingBar ? (
+          <View style={{ marginBottom: text.length > 0 || showThinking ? 8 : 0 }}>
+            <Pressable
+              onPress={() => setShowThinking((s) => !s)}
+              disabled={!hasThinkingContent}
+              style={({ pressed }) => ({
+                opacity: pressed && hasThinkingContent ? 0.6 : 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+              })}
+            >
+              {showSpinner ? <ActivityIndicator color={C.muted} /> : null}
+              <Text
+                selectable={false}
+                style={{
+                  fontFamily: MONO,
+                  color: C.faint,
+                  fontSize: 11,
+                  letterSpacing: 1.8,
+                }}
+              >
+                THINKING · {wordCount} {wordCount === 1 ? 'WORD' : 'WORDS'}
+                {hasThinkingContent ? (showThinking ? '  ▾' : '  ▸') : ''}
+              </Text>
+            </Pressable>
+            {showThinking && hasThinkingContent ? (
+              <Text
+                selectable
+                style={{
+                  marginTop: 6,
+                  color: C.muted,
+                  fontSize: 13,
+                  lineHeight: 19,
+                  fontStyle: 'italic',
+                }}
+              >
+                {thinkingText}
+              </Text>
+            ) : null}
+          </View>
+        ) : showSpinner ? (
+          <ActivityIndicator color={C.muted} />
+        ) : null}
+
+        {text.length > 0 ? (
           <Text
+            selectable
             style={{
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: C.starDeep,
-              paddingHorizontal: 8,
-              paddingVertical: 2,
-              fontSize: 9,
-              letterSpacing: 2,
-              color: C.star,
-              fontFamily: MONO,
+              color: isUser ? C.void : C.text,
+              fontSize: 15,
+              lineHeight: 22,
             }}
           >
-            {chip}
+            {text}
+            {streaming ? <Text style={{ color: C.faint }}>▍</Text> : null}
           </Text>
-        </View>
-        <Text
-          style={{ marginTop: 4, fontSize: 13, lineHeight: 20, color: C.muted }}
-        >
-          {body}
-        </Text>
+        ) : null}
       </View>
-    </GlassCard>
+    </View>
   );
 }

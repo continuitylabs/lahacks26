@@ -27,8 +27,6 @@ export type PatientData = {
     spo2: number | null;
     respiratoryRate: number | null;
     hrv: number | null;
-    systolic: number | null;
-    diastolic: number | null;
     perfusionIndex: number | null;
   };
   summary: string[];

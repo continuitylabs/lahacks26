@@ -28,8 +28,6 @@ export function dummyVitals(): IncidentVitalsSlice {
   return {
     heartRate: 96,
     spo2: 97,
-    systolic: 128,
-    diastolic: 82,
     confidence: 0.78,
     capturedAt: Date.now(),
   };

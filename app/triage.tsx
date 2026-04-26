@@ -69,8 +69,6 @@ export default function Triage() {
       lastVitals: {
         heartRate: result.heartRate,
         spo2: result.spo2,
-        systolic: result.systolic,
-        diastolic: result.diastolic,
         confidence: result.confidence,
         capturedAt,
       },
@@ -79,8 +77,6 @@ export default function Triage() {
       vitals: {
         heartRate: result.heartRate,
         spo2: result.spo2,
-        systolic: result.systolic,
-        diastolic: result.diastolic,
         confidence: result.confidence,
         capturedAt,
       },
@@ -319,11 +315,6 @@ export default function Triage() {
                 title="Oxygen"
                 value={result ? `${result.spo2}` : '--'}
                 unit="% SpO2"
-              />
-              <VitalsRow
-                title="Pressure"
-                value={result ? `${result.systolic}/${result.diastolic}` : '--/--'}
-                unit="EST mmHg"
               />
 
               <View

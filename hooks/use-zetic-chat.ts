@@ -229,6 +229,17 @@ export function useZeticChat() {
     setMessages([]);
   }, [isGenerating]);
 
+  // Seed an assistant message into the conversation as if the model had
+  // already spoken. Used by the injury-flow entry screen to open the chat
+  // with a fixed prompt; subsequent send() calls include this turn in the
+  // prompt so the model has full context.
+  const seedAssistant = useCallback((text: string) => {
+    setMessages((m) => {
+      if (m.length > 0) return m;
+      return [{ id: makeId(), role: 'assistant', text }];
+    });
+  }, []);
+
   return {
     status,
     messages,
@@ -241,5 +252,6 @@ export function useZeticChat() {
     send,
     stop,
     clear,
+    seedAssistant,
   };
 }
