@@ -24,7 +24,6 @@ const SERIF =
 
 const C = {
   text: '#F5EFE4',
-  muted: 'rgba(245,239,228,0.7)',
   faint: 'rgba(245,239,228,0.4)',
   star: '#2D7A4F',
   starDeep: '#1A5535',
@@ -105,6 +104,8 @@ export default function TriageChat() {
     if (isGenerating) await stop();
     router.replace('/');
   }, [isGenerating, router, stop]);
+
+  const canSend = status.kind === 'ready' && !isGenerating && input.trim().length > 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: C.void }}>
@@ -245,7 +246,7 @@ export default function TriageChat() {
 
           <Pressable
             onPress={onSubmit}
-            disabled={status.kind !== 'ready' || isGenerating || !input.trim()}
+            disabled={!canSend}
             style={{
               width: 44,
               height: 44,
@@ -253,10 +254,7 @@ export default function TriageChat() {
               backgroundColor: C.star,
               alignItems: 'center',
               justifyContent: 'center',
-              opacity:
-                status.kind !== 'ready' || isGenerating || !input.trim()
-                  ? 0.4
-                  : 1,
+              opacity: canSend ? 1 : 0.4,
             }}
           >
             {isGenerating ? (
@@ -354,7 +352,7 @@ function Bubble({
       >
         <Text
           style={{
-            color: C.text,
+            color: isUser ? C.void : C.text,
             fontSize: 15,
             lineHeight: 22,
           }}
