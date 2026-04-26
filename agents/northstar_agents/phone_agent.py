@@ -107,6 +107,10 @@ _REPLY_TIMEOUT_S = 25.0
 _reply_queue: "asyncio.Queue[str]" = asyncio.Queue()
 
 
+def _console_debug(event: str, details: dict[str, object]) -> None:
+    print(f"[PhoneAgent] {event} {details}", flush=True)
+
+
 def _build_chat_text(req: ReportRequest) -> str:
     """Compose a chat-protocol prompt from structured fields.
 
@@ -145,6 +149,17 @@ def _build_chat_text(req: ReportRequest) -> str:
 async def report(ctx: Context, req: ReportRequest) -> ReportResponse:
     request_id = str(uuid4())
     text = _build_chat_text(req)
+    _console_debug(
+        "report_received",
+        {
+            "requestId": request_id,
+            "userName": req.user_name,
+            "placeCall": req.place_call,
+            "latitude": req.latitude,
+            "longitude": req.longitude,
+            "chars": len(text),
+        },
+    )
 
     ctx.logger.info(
         f"[Phone] req={request_id} ({len(text)} chars) → coordinator"
@@ -155,6 +170,14 @@ async def report(ctx: Context, req: ReportRequest) -> ReportResponse:
         _reply_queue.get_nowait()
 
     coord = config.address("rescue_coordinator")
+    _console_debug(
+        "forwarding_to_coordinator",
+        {
+            "requestId": request_id,
+            "target": coord,
+            "preview": text[:120],
+        },
+    )
     ctx.logger.info(f"[Phone] req={request_id} target={coord[:24]}…")
     try:
         status = await ctx.send(
@@ -166,6 +189,13 @@ async def report(ctx: Context, req: ReportRequest) -> ReportResponse:
             ),
         )
     except Exception as exc:
+        _console_debug(
+            "coordinator_send_failed",
+            {
+                "requestId": request_id,
+                "error": str(exc),
+            },
+        )
         ctx.logger.warning(f"[Phone] req={request_id} send raised: {exc}")
         return ReportResponse(
             request_id=request_id,
@@ -193,6 +223,13 @@ async def report(ctx: Context, req: ReportRequest) -> ReportResponse:
     try:
         markdown = await asyncio.wait_for(_reply_queue.get(), _REPLY_TIMEOUT_S)
     except asyncio.TimeoutError:
+        _console_debug(
+            "reply_timeout",
+            {
+                "requestId": request_id,
+                "timeoutSeconds": _REPLY_TIMEOUT_S,
+            },
+        )
         ctx.logger.warning(f"[Phone] req={request_id} timed out waiting for reply")
         return ReportResponse(
             request_id=request_id,
@@ -200,6 +237,13 @@ async def report(ctx: Context, req: ReportRequest) -> ReportResponse:
             timed_out=True,
         )
 
+    _console_debug(
+        "reply_received",
+        {
+            "requestId": request_id,
+            "chars": len(markdown),
+        },
+    )
     ctx.logger.info(f"[Phone] req={request_id} ← reply ({len(markdown)} chars)")
     return ReportResponse(request_id=request_id, markdown=markdown)
 

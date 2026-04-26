@@ -90,6 +90,10 @@ class _Pending:
 PENDING: dict[str, _Pending] = {}
 
 
+def _console_debug(event: str, details: dict[str, object]) -> None:
+    print(f"[Coordinator] {event} {details}", flush=True)
+
+
 # ── Incident parsing (regex fallback when no Claude key) ────────────────────
 
 
@@ -387,6 +391,15 @@ async def on_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
         return
 
     place_call = "call now" in text.lower() or "place the call" in text.lower()
+    _console_debug(
+        "chat_received",
+        {
+            "sender": sender,
+            "chars": len(text),
+            "placeCall": place_call,
+            "preview": text[:160],
+        },
+    )
 
     ctx.logger.info(
         f"[Coordinator] chat from {sender[:24]}… ({len(text)} chars, "
@@ -399,6 +412,15 @@ async def on_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
     # 4. Fan out to the specialists.
     request_id = str(uuid4())
     PENDING[request_id] = _Pending(sender=sender, incident=incident, place_call=place_call)
+    _console_debug(
+        "fanout_started",
+        {
+            "requestId": request_id,
+            "latitude": incident.latitude,
+            "longitude": incident.longitude,
+            "placeCall": place_call,
+        },
+    )
 
     await ctx.send(
         config.address("location_scout"),
