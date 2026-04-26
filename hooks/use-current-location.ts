@@ -21,7 +21,7 @@ export function useCurrentLocation(): LocationState {
     status: 'pending',
     coords: FALLBACK_COORDS,
   });
-  const { updateSession } = useProfileState();
+  const { updateSession, updateIncident } = useProfileState();
 
   useEffect(() => {
     let cancelled = false;
@@ -41,9 +41,17 @@ export function useCurrentLocation(): LocationState {
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
         };
+        const capturedAt = Date.now();
         setState({ status: 'granted', coords });
         updateSession({
-          lastCoords: { ...coords, capturedAt: Date.now() },
+          lastCoords: { ...coords, capturedAt },
+        });
+        updateIncident({
+          coords: {
+            ...coords,
+            accuracyMeters: loc.coords.accuracy ?? null,
+            capturedAt,
+          },
         });
       } catch {
         if (!cancelled) {
@@ -54,7 +62,7 @@ export function useCurrentLocation(): LocationState {
     return () => {
       cancelled = true;
     };
-  }, [updateSession]);
+  }, [updateSession, updateIncident]);
 
   return state;
 }

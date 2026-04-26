@@ -6,10 +6,27 @@ import {
   setProfile as persistProfile,
   updateSession as persistSession,
   clearSession as persistClearSession,
+  startIncident as persistStartIncident,
+  updateIncident as persistUpdateIncident,
+  clearIncident as persistClearIncident,
+  type IncidentAgentReportSlice,
+  type IncidentCallSlice,
+  type IncidentCoordsSlice,
+  type IncidentTriageSlice,
+  type IncidentTrigger,
+  type IncidentVitalsSlice,
   type ProfilePatch,
   type ProfileState,
   type Session,
 } from '@/src/lib/profile-store';
+
+type IncidentSlicePatch = {
+  triage?: IncidentTriageSlice;
+  coords?: IncidentCoordsSlice;
+  vitals?: IncidentVitalsSlice;
+  agentReport?: IncidentAgentReportSlice;
+  call?: IncidentCallSlice;
+};
 
 type ProfileStoreContextValue = {
   state: ProfileState;
@@ -18,6 +35,12 @@ type ProfileStoreContextValue = {
   setProfile: (patch: ProfilePatch) => void;
   updateSession: (patch: Partial<Session>) => void;
   clearSession: () => void;
+  /** Start a new pipeline run (rotates the incident id). */
+  startIncident: (trigger: IncidentTrigger) => void;
+  /** Patch fields on the active incident. No-op if no active incident. */
+  updateIncident: (patch: IncidentSlicePatch) => void;
+  /** Drop the active incident (post-call cleanup). */
+  clearIncident: () => void;
 };
 
 const ProfileStoreContext = createContext<ProfileStoreContextValue | null>(null);
@@ -50,9 +73,39 @@ export function ProfileStoreProvider({ children }: { children: ReactNode }) {
     void persistClearSession().then((next) => setState(next));
   }, []);
 
+  const startIncident = useCallback((trigger: IncidentTrigger) => {
+    void persistStartIncident(trigger).then((next) => setState(next));
+  }, []);
+
+  const updateIncident = useCallback((patch: IncidentSlicePatch) => {
+    void persistUpdateIncident(patch).then((next) => setState(next));
+  }, []);
+
+  const clearIncident = useCallback(() => {
+    void persistClearIncident().then((next) => setState(next));
+  }, []);
+
   const value = useMemo<ProfileStoreContextValue>(
-    () => ({ state, loaded, setProfile, updateSession, clearSession }),
-    [state, loaded, setProfile, updateSession, clearSession]
+    () => ({
+      state,
+      loaded,
+      setProfile,
+      updateSession,
+      clearSession,
+      startIncident,
+      updateIncident,
+      clearIncident,
+    }),
+    [
+      state,
+      loaded,
+      setProfile,
+      updateSession,
+      clearSession,
+      startIncident,
+      updateIncident,
+      clearIncident,
+    ]
   );
 
   return (

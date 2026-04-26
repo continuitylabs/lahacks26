@@ -65,15 +65,27 @@ class ReportResponse(Model):
 # ── Agent bootstrap ────────────────────────────────────────────────────────
 
 
-# The phone agent always runs in endpoint mode — it's not for Agentverse
-# discovery, it's the local proxy between the Expo app and the rest of the
-# uAgent network. The REST server is what the app talks to.
-agent = Agent(
-    name="northstar_phone_agent",
-    seed=config.PHONE_AGENT_SEED,
-    port=config.PHONE_AGENT_PORT,
-    endpoint=[f"http://127.0.0.1:{config.PHONE_AGENT_PORT}/submit"],
-)
+# Bootstrap with the same dual-mode logic as the rescue coordinator. If
+# AGENTVERSE_API_KEY is set, the four track agents register themselves via
+# Agentverse mailboxes — meaning their resolved endpoint in the Almanac is
+# the mailbox URL, not localhost. To reach those agents over the Chat
+# Protocol the phone agent has to authenticate as a mailbox client itself,
+# otherwise `ctx.send()` resolves the destination to an Agentverse URL we
+# can't post to. The REST server keeps running on the same port either way
+# — `on_rest_post` works in both endpoint and mailbox configurations.
+_use_mailbox = bool(config.AGENTVERSE_API_KEY)
+_agent_kwargs: dict = {
+    "name": "northstar_phone_agent",
+    "seed": config.PHONE_AGENT_SEED,
+    "port": config.PHONE_AGENT_PORT,
+}
+if _use_mailbox:
+    _agent_kwargs["mailbox"] = True
+else:
+    _agent_kwargs["endpoint"] = [
+        f"http://127.0.0.1:{config.PHONE_AGENT_PORT}/submit"
+    ]
+agent = Agent(**_agent_kwargs)
 
 chat_proto = Protocol(spec=chat_protocol_spec)
 
@@ -81,10 +93,11 @@ chat_proto = Protocol(spec=chat_protocol_spec)
 # The chat protocol carries no request/reply correlation, so we use a
 # FIFO queue: a /report call awaits the next inbound ChatMessage. One user
 # per phone agent, so single-channel ordering is fine.
-# iOS's default fetch timeout is ~60s; stay comfortably under so the app
-# gets a real `timed_out=true` payload rather than a "Network request
-# failed" socket error.
-_REPLY_TIMEOUT_S = 45.0
+# iOS's default fetch timeout is ~60s; we keep the soft wait shorter so the
+# Expo client gets a real `timed_out=true` payload (and falls back to its
+# locally composed dispatch script) instead of failing the socket. The
+# client itself sets a longer overall timeout.
+_REPLY_TIMEOUT_S = 25.0
 _reply_queue: "asyncio.Queue[str]" = asyncio.Queue()
 
 
@@ -130,18 +143,39 @@ async def report(ctx: Context, req: ReportRequest) -> ReportResponse:
 
     coord = config.address("rescue_coordinator")
     ctx.logger.info(f"[Phone] req={request_id} target={coord[:24]}…")
-    status = await ctx.send(
-        coord,
-        ChatMessage(
-            timestamp=datetime.now(timezone.utc),
-            msg_id=uuid4(),
-            content=[TextContent(type="text", text=text)],
-        ),
-    )
+    try:
+        status = await ctx.send(
+            coord,
+            ChatMessage(
+                timestamp=datetime.now(timezone.utc),
+                msg_id=uuid4(),
+                content=[TextContent(type="text", text=text)],
+            ),
+        )
+    except Exception as exc:
+        ctx.logger.warning(f"[Phone] req={request_id} send raised: {exc}")
+        return ReportResponse(
+            request_id=request_id,
+            markdown=f"(coordinator unreachable: {exc})",
+            timed_out=True,
+        )
     ctx.logger.info(
         f"[Phone] req={request_id} send status={getattr(status, 'status', status)} "
         f"endpoint={getattr(status, 'endpoint', '?')}"
     )
+    # If uAgents reports the send as failed (no resolvable endpoint, or all
+    # configured endpoints rejected it), bail early instead of waiting the
+    # full reply window for a message that will never arrive.
+    raw_status = getattr(status, "status", None)
+    status_str = (
+        raw_status.value if hasattr(raw_status, "value") else str(raw_status or "")
+    )
+    if status_str.lower() == "failed":
+        return ReportResponse(
+            request_id=request_id,
+            markdown="(coordinator send failed — agent unreachable)",
+            timed_out=True,
+        )
 
     try:
         markdown = await asyncio.wait_for(_reply_queue.get(), _REPLY_TIMEOUT_S)

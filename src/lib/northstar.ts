@@ -37,7 +37,10 @@ export type ReportResult = {
   timedOut: boolean;
 };
 
-export async function reportIncident(p: ReportPayload): Promise<ReportResult> {
+export async function reportIncident(
+  p: ReportPayload,
+  opts: { signal?: AbortSignal } = {}
+): Promise<ReportResult> {
   const res = await fetch(`${baseUrl()}/report`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -50,6 +53,7 @@ export async function reportIncident(p: ReportPayload): Promise<ReportResult> {
       emergency_contact: p.emergencyContact,
       place_call: p.placeCall ?? false,
     }),
+    signal: opts.signal,
   });
 
   if (!res.ok) {

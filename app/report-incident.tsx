@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { Platform } from 'react-native';
 
 import { GlassCard } from '@/components/glass-card';
+import { useProfileState } from '@/src/lib/profile-store-provider';
 import { Pressable, Text, View } from '@/src/tw';
 
 const SERIF =
@@ -35,6 +36,7 @@ const C = {
 
 export default function ReportIncident() {
   const router = useRouter();
+  const { startIncident } = useProfileState();
 
   return (
     <View style={{ flex: 1, backgroundColor: C.void }}>
@@ -125,6 +127,7 @@ export default function ReportIncident() {
 
         <Pressable
           onPress={() => {
+            startIncident('manual');
             router.replace('/triage');
           }}
           style={({ pressed }) => ({

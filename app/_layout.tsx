@@ -20,8 +20,8 @@ export const unstable_settings = {
 export default function RootLayout() {
   return (
     <ThemeProvider value={DarkTheme}>
-      <FallDetectorProvider>
-        <ProfileStoreProvider>
+      <ProfileStoreProvider>
+        <FallDetectorProvider>
           <Stack
             screenOptions={{
               headerShown: false,
@@ -53,8 +53,8 @@ export default function RootLayout() {
               }}
             />
           </Stack>
-        </ProfileStoreProvider>
-      </FallDetectorProvider>
+        </FallDetectorProvider>
+      </ProfileStoreProvider>
       <StatusBar style="light" />
     </ThemeProvider>
   );

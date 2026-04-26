@@ -7,6 +7,7 @@ import { Platform } from 'react-native';
 import { GlassCard } from '@/components/glass-card';
 import { usePpgVitals } from '@/hooks/use-ppg-vitals';
 import { useProfileState } from '@/src/lib/profile-store-provider';
+import { runOnDeviceTriage } from '@/src/zetic/run-triage';
 import { Pressable, Text, View } from '@/src/tw';
 
 const SERIF =
@@ -50,10 +51,20 @@ export default function Triage() {
     reset,
   } = ppg;
 
-  const { updateSession } = useProfileState();
+  const { state, updateSession, updateIncident, startIncident } = useProfileState();
+
+  // If somehow we landed on /triage without a started incident (e.g. deep
+  // link, hot reload, unusual nav), bootstrap one so all downstream writes
+  // have somewhere to go.
+  useEffect(() => {
+    if (!state.session.incident) {
+      startIncident('manual');
+    }
+  }, [state.session.incident, startIncident]);
 
   useEffect(() => {
     if (phase !== 'complete' || !result) return;
+    const capturedAt = Date.now();
     updateSession({
       lastVitals: {
         heartRate: result.heartRate,
@@ -61,10 +72,56 @@ export default function Triage() {
         systolic: result.systolic,
         diastolic: result.diastolic,
         confidence: result.confidence,
-        capturedAt: Date.now(),
+        capturedAt,
       },
     });
-  }, [phase, result, updateSession]);
+    updateIncident({
+      vitals: {
+        heartRate: result.heartRate,
+        spo2: result.spo2,
+        systolic: result.systolic,
+        diastolic: result.diastolic,
+        confidence: result.confidence,
+        capturedAt,
+      },
+    });
+  }, [phase, result, updateSession, updateIncident]);
+
+  // Derive an on-device triage summary the moment vitals settle. We seed the
+  // model with whatever loose context we have (medical baseline + any prior
+  // chat conversation) and write the structured slice into AsyncStorage so
+  // the rescue stage can compose its payload from it instead of blocking on
+  // the agent network for the same information.
+  const triageSeededRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (phase !== 'complete' || !result) return;
+    const incidentId = state.session.incident?.id ?? null;
+    if (!incidentId || triageSeededRef.current === incidentId) return;
+    triageSeededRef.current = incidentId;
+
+    const baseline = state.profile.medicalNotes.trim();
+    const seed =
+      (baseline ? `Patient baseline: ${baseline}. ` : '') +
+      `Pulse ${result.heartRate} bpm, SpO2 ${result.spo2}%, BP ${result.systolic}/${result.diastolic} (confidence ${(result.confidence * 100).toFixed(0)}%).`;
+
+    void runOnDeviceTriage(seed, { timeoutMs: 8000 }).then((triage) => {
+      updateIncident({
+        triage: {
+          summary: triage.summary,
+          rawText: triage.rawText,
+          findings: triage.findings,
+          severity: triage.severity,
+          capturedAt: triage.capturedAt,
+        },
+      });
+      updateSession({
+        lastTriageReport: {
+          summary: triage.summary,
+          capturedAt: triage.capturedAt,
+        },
+      });
+    });
+  }, [phase, result, state.session.incident?.id, state.profile.medicalNotes, updateIncident, updateSession]);
 
   const readingTone = useMemo(() => {
     if (!result) {

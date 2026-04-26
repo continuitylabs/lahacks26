@@ -41,6 +41,17 @@ function getBridgeBaseUrl() {
     return explicit.replace(/\/$/, '');
   }
 
+  // Reuse the host the user already configured for the phone agent so they
+  // only need to set the LAN IP in one place. The call bridge listens on a
+  // different port (8787 by default).
+  const phoneAgentUrl = process.env.EXPO_PUBLIC_NORTHSTAR_URL;
+  const phoneAgentHost = extractHost(phoneAgentUrl);
+  if (phoneAgentHost) {
+    const resolved = `http://${phoneAgentHost}:8787`;
+    console.log('[NorthstarCall] Reused phone-agent host for bridge URL:', resolved);
+    return resolved;
+  }
+
   const candidates = [
     Constants.expoConfig?.hostUri,
     Constants.expoGoConfig?.debuggerHost,

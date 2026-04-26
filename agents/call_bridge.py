@@ -31,6 +31,14 @@ def _safe_float(value: Any) -> float | None:
 
 
 def build_script(patient_data: dict[str, Any]) -> str:
+    # Prefer a pre-drafted rescue script the agent network already produced —
+    # it's already been through Claude (or the template fallback) and is
+    # consistent with what the user saw on the rescue screen. Falls back to
+    # the locally composed version when the agent network was unavailable.
+    pre_drafted = patient_data.get("rescueScript")
+    if isinstance(pre_drafted, str) and pre_drafted.strip():
+        return pre_drafted.strip()
+
     patient = patient_data.get("patient", {})
     location = patient_data.get("location", {})
     triage = patient_data.get("triage", {})

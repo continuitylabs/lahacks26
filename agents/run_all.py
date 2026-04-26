@@ -28,6 +28,7 @@ from pathlib import Path
 
 from uagents import Bureau
 
+import call_bridge
 from northstar_agents import (
     config,
     contact_orchestrator,
@@ -106,6 +107,10 @@ def _print_inspector_urls() -> None:
         ("Location Scout",       location_scout.agent.address,       config.LOCATION_SCOUT_PORT),
         ("Medical Coordinator",  medical_coordinator.agent.address,  config.MEDICAL_COORDINATOR_PORT),
         ("Contact Orchestrator", contact_orchestrator.agent.address, config.CONTACT_ORCHESTRATOR_PORT),
+        # Phone Agent now also runs in mailbox mode when AGENTVERSE_API_KEY is
+        # set, so its outbound `ctx.send()` to the coordinator can route via
+        # Agentverse instead of trying (and failing) to reach a localhost URL.
+        ("Phone Agent",          phone_agent.agent.address,          config.PHONE_AGENT_PORT),
     ]
     for label, address, port in addrs:
         url = f"https://agentverse.ai/inspect/?uri=http://127.0.0.1:{port}&address={address}"
@@ -150,6 +155,16 @@ def run_multiprocess() -> None:
     _print_integrations()
     _print_inspector_urls()
 
+    # Boot the in-process HTTP bridge that the Expo client posts to when it
+    # wants to place a call. Keeping it in this parent process means the
+    # client only needs to know one host:port pair (LAN IP + 8787) and the
+    # bridge has access to the same `northstar_agents.tools.*` modules the
+    # Contact Orchestrator uses, so call placement works whether or not the
+    # full agent network responded.
+    bridge_server = call_bridge.start_bridge_server()
+    print(f" Call bridge listening on 0.0.0.0:{config.CALL_BRIDGE_PORT}")
+    print(_BAR)
+
     # Inherit env so each child sees AGENTVERSE_API_KEY, ANTHROPIC_API_KEY, etc.
     procs: list[tuple[str, subprocess.Popen]] = []
     for label, name in _AGENT_NAMES:
@@ -186,6 +201,11 @@ def run_multiprocess() -> None:
             except subprocess.TimeoutExpired:
                 p.kill()
                 p.wait()
+        try:
+            bridge_server.shutdown()
+            bridge_server.server_close()
+        except Exception:
+            pass
 
 
 # ── Bureau mode (`--local`) ────────────────────────────────────────────────
@@ -210,9 +230,21 @@ def run_bureau(smoke_test: bool, prompt: str | None) -> None:
     # per-agent), but include it so its address registers in the registry —
     # keeps the rescue coordinator's lookups consistent across modes.
     bureau.add(phone_agent.agent)
+    # Boot the call bridge here too so the Expo client's call request works
+    # in offline/local mode against the same `tools.elevenlabs` + `tools.twilio`
+    # the Contact Orchestrator would use.
+    bridge_server = call_bridge.start_bridge_server()
+    print(f" Call bridge listening on 0.0.0.0:{config.CALL_BRIDGE_PORT}")
     if smoke_test:
         bureau.add(make_test_client(rescue_coordinator.agent.address, prompt or DEMO_PROMPT))
-    bureau.run()
+    try:
+        bureau.run()
+    finally:
+        try:
+            bridge_server.shutdown()
+            bridge_server.server_close()
+        except Exception:
+            pass
 
 
 # ── Entrypoint ──────────────────────────────────────────────────────────────

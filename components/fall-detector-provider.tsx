@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 
 import { FallAlert } from '@/components/fall-alert';
 import { useFallDetector } from '@/hooks/use-fall-detector';
+import { useProfileState } from '@/src/lib/profile-store-provider';
 
 type FallDetectorContextValue = {
   /** Trigger the alert as if a fall had been detected. No-ops if alert is already visible. */
@@ -18,6 +19,7 @@ export function FallDetectorProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const segments = useSegments();
   const [alertVisible, setAlertVisible] = useState(false);
+  const { startIncident } = useProfileState();
 
   // Pause when in any incident-flow screen, or while the alert is already up
   // (the alert covers the cooldown window for visible duration).
@@ -44,11 +46,14 @@ export function FallDetectorProvider({ children }: { children: ReactNode }) {
 
   const handleConfirm = useCallback(() => {
     setAlertVisible(false);
+    // Bootstrap a fresh pipeline run before navigating to triage. From here
+    // every stage writes into the same incident record in AsyncStorage.
+    startIncident('fall');
     // push (not replace) so the underlying (tabs) route stays beneath us in
     // the stack — otherwise the incident flow's Close / Done buttons end up
     // dispatching GO_BACK / POP_TO_TOP on a depth-1 stack and throwing.
     router.push('/triage');
-  }, [router]);
+  }, [router, startIncident]);
 
   const value = useMemo<FallDetectorContextValue>(() => ({ simulate }), [simulate]);
 

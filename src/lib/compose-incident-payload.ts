@@ -22,19 +22,31 @@ export function composeIncidentPayload(
   liveCoords: Coords | null
 ): ReportPayload {
   const { profile, session } = state;
+  const incident = session.incident;
 
   const userName = profile.userName.trim() || DEFAULT_USER_NAME;
 
+  // Resolution priority:
+  //   1. Live coords from the location hook (freshest)
+  //   2. The active incident's coords slice (captured during this run)
+  //   3. The persisted "last known" coords (previous session)
+  //   4. Hard-coded fallback near campus
   const coords =
     liveCoords ??
-    (session.lastCoords
-      ? { latitude: session.lastCoords.latitude, longitude: session.lastCoords.longitude }
-      : FALLBACK_COORDS);
+    (incident?.coords
+      ? { latitude: incident.coords.latitude, longitude: incident.coords.longitude }
+      : session.lastCoords
+        ? { latitude: session.lastCoords.latitude, longitude: session.lastCoords.longitude }
+        : FALLBACK_COORDS);
 
-  const heartRateBpm = session.lastVitals?.heartRate;
+  // Same priority for vitals: prefer the active incident snapshot.
+  const heartRateBpm =
+    incident?.vitals?.heartRate ?? session.lastVitals?.heartRate;
 
   const baseSummary =
-    session.lastTriageReport?.summary?.trim() || DEFAULT_CONDITION;
+    incident?.triage?.summary?.trim() ||
+    session.lastTriageReport?.summary?.trim() ||
+    DEFAULT_CONDITION;
   const notes = profile.medicalNotes.trim();
   const conditionSummary = notes
     ? `${baseSummary}\n\nMedical baseline: ${notes}`
