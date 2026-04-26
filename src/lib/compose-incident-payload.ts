@@ -40,8 +40,11 @@ export function composeIncidentPayload(
         : FALLBACK_COORDS);
 
   // Same priority for vitals: prefer the active incident snapshot.
-  const heartRateBpm =
-    incident?.vitals?.heartRate ?? session.lastVitals?.heartRate;
+  const lastVitals = session.lastVitals;
+  const heartRateBpm = incident?.vitals?.heartRate ?? lastVitals?.heartRate;
+  const spo2 = incident?.vitals?.spo2 ?? lastVitals?.spo2;
+  const vitalsConfidence =
+    incident?.vitals?.confidence ?? lastVitals?.confidence;
 
   const baseSummary =
     incident?.triage?.summary?.trim() ||
@@ -62,6 +65,7 @@ export function composeIncidentPayload(
 
   return {
     userName,
+    age: profile.age,
     latitude: coords.latitude,
     longitude: coords.longitude,
     conditionSummary,
@@ -69,8 +73,12 @@ export function composeIncidentPayload(
     triageSummary: incident?.triage?.summary ?? '',
     triageFindings: incident?.triage?.findings ?? [],
     heartRateBpm,
-    spo2: incident?.vitals?.spo2 ?? session.lastVitals?.spo2,
+    spo2,
     confidence: incident?.vitals?.confidence ?? session.lastVitals?.confidence,
+    medicalNotes: notes || undefined,
+    systolic: lastVitals?.systolic,
+    diastolic: lastVitals?.diastolic,
+    vitalsConfidence,
     emergencyContact,
     placeCall: false,
   };

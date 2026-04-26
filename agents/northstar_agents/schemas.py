@@ -61,6 +61,7 @@ class NextStepCard(Model):
 
 class IncidentBrief(Model):
     user_name: Optional[str] = None
+    age: Optional[int] = None
     latitude: float
     longitude: float
     location_description: str
@@ -69,6 +70,10 @@ class IncidentBrief(Model):
     triage_transcript: list[TranscriptTurn] = []
     triage_summary: Optional[str] = None
     vitals: Optional[VitalsSnapshot] = None
+    medical_notes: Optional[str] = None
+    systolic: Optional[int] = None
+    diastolic: Optional[int] = None
+    vitals_confidence: Optional[float] = None
     emergency_contact: Optional[str] = None
     severity_hint: Optional[Severity] = None
 
@@ -119,6 +124,7 @@ class WeatherAnalystResponse(Model):
 class ScriptComposerRequest(Model):
     request_id: str
     user_name: str
+    age: Optional[int] = None
     latitude: float
     longitude: float
     severity_hint: Optional[Severity] = None
@@ -131,6 +137,10 @@ class ScriptComposerRequest(Model):
     triage_transcript: list[TranscriptTurn] = []
     triage_findings: list[str] = []
     vitals: Optional[VitalsSnapshot] = None
+    medical_notes: Optional[str] = None
+    systolic: Optional[int] = None
+    diastolic: Optional[int] = None
+    vitals_confidence: Optional[float] = None
     emergency_contact: Optional[str] = None
     extraction_point: Optional[str] = None
     place_call: bool = False
@@ -141,6 +151,7 @@ class ScriptComposerResponse(Model):
     rescue_script: str
     voice_audio_path: Optional[str] = None
     call_sid: Optional[str] = None
+    whatsapp_sid: Optional[str] = None
     status: Literal["drafted", "voiced", "called", "failed"]
     notes: Optional[str] = None
 

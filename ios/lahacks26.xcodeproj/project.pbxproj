@@ -371,7 +371,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = HAJGDT2WDK;
+				DEVELOPMENT_TEAM = 6AU366944G;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -390,7 +390,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = com.abonev.lahacks26;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vidhuv.lahacks26;
 				PRODUCT_NAME = lahacks26;
 				SWIFT_OBJC_BRIDGING_HEADER = "lahacks26/lahacks26-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -410,7 +410,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = HAJGDT2WDK;
+				DEVELOPMENT_TEAM = 6AU366944G;
 				INFOPLIST_FILE = lahacks26/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -424,7 +424,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = com.abonev.lahacks26;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vidhuv.lahacks26;
 				PRODUCT_NAME = lahacks26;
 				SWIFT_OBJC_BRIDGING_HEADER = "lahacks26/lahacks26-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;

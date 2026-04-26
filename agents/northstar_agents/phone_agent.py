@@ -46,6 +46,7 @@ class ReportRequest(Model):
     """Structured device data the Expo app POSTs to /report."""
 
     user_name: str
+    age: Optional[int] = None
     latitude: float
     longitude: float
     condition_summary: str
@@ -55,6 +56,10 @@ class ReportRequest(Model):
     heart_rate_bpm: Optional[int] = None
     spo2: Optional[int] = None
     confidence: Optional[float] = None
+    medical_notes: Optional[str] = None
+    systolic: Optional[int] = None
+    diastolic: Optional[int] = None
+    vitals_confidence: Optional[float] = None
     emergency_contact: Optional[str] = None
     place_call: bool = False
 
@@ -93,6 +98,10 @@ _REPLY_TIMEOUT_S = 25.0
 _reply_queue: "asyncio.Queue[str]" = asyncio.Queue()
 
 
+def _console_debug(event: str, details: dict[str, object]) -> None:
+    print(f"[PhoneAgent] {event} {details}", flush=True)
+
+
 def _build_chat_text(req: ReportRequest) -> str:
     """Compose a chat-protocol prompt with a YAML header.
 
@@ -109,7 +118,10 @@ def _build_chat_text(req: ReportRequest) -> str:
         "gps": {"lat": req.latitude, "lon": req.longitude},
         "heart_rate_bpm": req.heart_rate_bpm,
         "spo2": req.spo2,
-        "confidence": req.confidence,
+        "confidence": req.confidence or req.vitals_confidence,
+        "systolic": req.systolic,
+        "diastolic": req.diastolic,
+        "medical_notes": req.medical_notes,
         "triage_summary": req.triage_summary or "",
         "triage_findings": req.triage_findings,
         "triage_transcript": transcript_payload,
@@ -118,19 +130,26 @@ def _build_chat_text(req: ReportRequest) -> str:
     }
     yaml_block = yaml.safe_dump(yaml_payload, sort_keys=False, allow_unicode=True)
 
-    lat_dir = "N" if req.latitude >= 0 else "S"
-    lon_dir = "E" if req.longitude >= 0 else "W"
     parts: list[str] = []
-    parts.append(f"My name is {req.user_name}.")
-    parts.append(
-        f"My current GPS coordinates are "
-        f"{abs(req.latitude):.5f}°{lat_dir}, {abs(req.longitude):.5f}°{lon_dir}."
-    )
+    parts.append(f"Name: {req.user_name}")
+    if req.age is not None:
+        parts.append(f"Age: {req.age}")
+    parts.append(f"Coordinates: {req.latitude:.5f}, {req.longitude:.5f}")
     if req.heart_rate_bpm is not None:
-        parts.append(f"My heart rate is {req.heart_rate_bpm} bpm.")
-    parts.append(f"Condition: {req.condition_summary}")
+        parts.append(f"Heart rate: {req.heart_rate_bpm} bpm")
+    if req.spo2 is not None:
+        parts.append(f"SpO2: {req.spo2}%")
+    if req.systolic is not None or req.diastolic is not None:
+        sys = str(req.systolic) if req.systolic is not None else "unknown"
+        dia = str(req.diastolic) if req.diastolic is not None else "unknown"
+        parts.append(f"Blood pressure: {sys}/{dia} mmHg")
+    if req.vitals_confidence is not None:
+        parts.append(f"Vitals confidence: {round(req.vitals_confidence * 100)}%")
+    parts.append(f"Condition summary: {req.condition_summary}")
+    if req.medical_notes:
+        parts.append(f"Medical baseline: {req.medical_notes}")
     if req.emergency_contact:
-        parts.append(f"My emergency contact is {req.emergency_contact}.")
+        parts.append(f"Emergency contact: {req.emergency_contact}")
     if req.place_call:
         parts.append("Please call now.")
     free_form = " ".join(parts)
@@ -145,6 +164,17 @@ def _build_chat_text(req: ReportRequest) -> str:
 async def report(ctx: Context, req: ReportRequest) -> ReportResponse:
     request_id = str(uuid4())
     text = _build_chat_text(req)
+    _console_debug(
+        "report_received",
+        {
+            "requestId": request_id,
+            "userName": req.user_name,
+            "placeCall": req.place_call,
+            "latitude": req.latitude,
+            "longitude": req.longitude,
+            "chars": len(text),
+        },
+    )
 
     ctx.logger.info(
         f"[Phone] req={request_id} ({len(text)} chars) → coordinator"
@@ -155,6 +185,14 @@ async def report(ctx: Context, req: ReportRequest) -> ReportResponse:
         _reply_queue.get_nowait()
 
     coord = config.address("rescue_coordinator")
+    _console_debug(
+        "forwarding_to_coordinator",
+        {
+            "requestId": request_id,
+            "target": coord,
+            "preview": text[:120],
+        },
+    )
     ctx.logger.info(f"[Phone] req={request_id} target={coord[:24]}…")
     try:
         status = await ctx.send(
@@ -166,6 +204,13 @@ async def report(ctx: Context, req: ReportRequest) -> ReportResponse:
             ),
         )
     except Exception as exc:
+        _console_debug(
+            "coordinator_send_failed",
+            {
+                "requestId": request_id,
+                "error": str(exc),
+            },
+        )
         ctx.logger.warning(f"[Phone] req={request_id} send raised: {exc}")
         return ReportResponse(
             request_id=request_id,
@@ -193,6 +238,13 @@ async def report(ctx: Context, req: ReportRequest) -> ReportResponse:
     try:
         markdown = await asyncio.wait_for(_reply_queue.get(), _REPLY_TIMEOUT_S)
     except asyncio.TimeoutError:
+        _console_debug(
+            "reply_timeout",
+            {
+                "requestId": request_id,
+                "timeoutSeconds": _REPLY_TIMEOUT_S,
+            },
+        )
         ctx.logger.warning(f"[Phone] req={request_id} timed out waiting for reply")
         return ReportResponse(
             request_id=request_id,
@@ -200,6 +252,13 @@ async def report(ctx: Context, req: ReportRequest) -> ReportResponse:
             timed_out=True,
         )
 
+    _console_debug(
+        "reply_received",
+        {
+            "requestId": request_id,
+            "chars": len(markdown),
+        },
+    )
     ctx.logger.info(f"[Phone] req={request_id} ← reply ({len(markdown)} chars)")
     return ReportResponse(request_id=request_id, markdown=markdown)
 

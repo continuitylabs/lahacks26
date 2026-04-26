@@ -111,6 +111,9 @@ PENDING: dict[str, _Pending] = {}
 # safety margin.
 _SETTLE_TIMEOUT_S = 20.0
 
+def _console_debug(event: str, details: dict[str, object]) -> None:
+    print(f"[Coordinator] {event} {details}", flush=True)
+
 
 # ── Incident parsing ────────────────────────────────────────────────────────
 
@@ -159,12 +162,12 @@ def _regex_parse(text: str) -> IncidentBrief:
     findings: list[str] = [k for k in _KEYWORDS if k in free_text.lower()]
 
     return IncidentBrief(
-        user_name=None,
         latitude=lat,
         longitude=lon,
         location_description=free_text[:200],
         injury_description=free_text[:500],
         triage_findings=findings,
+        severity_hint=_hint_from_findings(findings),
     )
 
 
@@ -296,6 +299,11 @@ async def _maybe_dispatch_script(ctx: Context, request_id: str) -> None:
         vitals=state.incident.vitals,
         emergency_contact=state.incident.emergency_contact,
         extraction_point=state.location.extraction_recommendation,
+        age=state.incident.age,
+        medical_notes=state.incident.medical_notes,
+        systolic=state.incident.systolic,
+        diastolic=state.incident.diastolic,
+        vitals_confidence=state.incident.vitals_confidence,
         place_call=state.place_call,
     )
     await ctx.send(config.address("script_composer"), req)
@@ -374,6 +382,8 @@ def _format_markdown(state: _Pending) -> str:
             lines.append(f"**Voice audio:** `{script.voice_audio_path}`")
         if script.call_sid:
             lines.append(f"**Call SID:** `{script.call_sid}`")
+        if script.whatsapp_sid:
+            lines.append(f"**WhatsApp SID:** `{script.whatsapp_sid}`")
         if script.notes:
             lines.append(f"**Notes:** {script.notes}")
         lines.append("")
@@ -465,6 +475,15 @@ async def on_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
         return
 
     place_call = "call now" in text.lower() or "place the call" in text.lower()
+    _console_debug(
+        "chat_received",
+        {
+            "sender": sender,
+            "chars": len(text),
+            "placeCall": place_call,
+            "preview": text[:160],
+        },
+    )
 
     ctx.logger.info(
         f"[Coordinator] chat from {sender[:24]}… ({len(text)} chars, "
@@ -477,6 +496,15 @@ async def on_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
     state = _Pending(sender=sender, incident=incident, place_call=place_call)
     PENDING[request_id] = state
     state.settle_task = asyncio.create_task(_settle_after_timeout(ctx, request_id))
+    _console_debug(
+        "fanout_started",
+        {
+            "requestId": request_id,
+            "latitude": incident.latitude,
+            "longitude": incident.longitude,
+            "placeCall": place_call,
+        },
+    )
 
     await ctx.send(
         config.address("location_scout"),

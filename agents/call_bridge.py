@@ -69,54 +69,137 @@ def build_script(patient_data: dict[str, Any]) -> str:
     return " ".join(script_parts)
 
 
+def build_whatsapp_message(patient_data: dict[str, Any]) -> str:
+    patient = patient_data.get("patient", {})
+    location = patient_data.get("location", {})
+    triage = patient_data.get("triage", {})
+    summary_lines = patient_data.get("summary", [])
+
+    latitude = _safe_float(location.get("latitude"))
+    longitude = _safe_float(location.get("longitude"))
+    lat_text = f"{latitude:.5f}" if latitude is not None else "missing"
+    lon_text = f"{longitude:.5f}" if longitude is not None else "missing"
+
+    def _value(value: Any, suffix: str = "") -> str:
+        if value is None or value == "":
+            return "missing"
+        return f"{value}{suffix}"
+
+    patient_name = patient.get("name") or "missing"
+    age = _value(patient.get("age"))
+    medical_baseline = _value(patient.get("medicalBaseline"))
+    location_status = _value(location.get("status"))
+    heart_rate = _value(triage.get("heartRate"), " bpm")
+    spo2 = _value(triage.get("spo2"), "%")
+    perfusion_index = _value(triage.get("perfusionIndex"))
+    vitals_confidence = _value(
+        round(float(triage["confidence"]) * 100)
+        if triage.get("confidence") is not None
+        else None,
+        "%",
+    )
+
+    lines = [
+        "NORTHSTAR EMERGENCY ALERT",
+        "",
+        "Patient",
+        f"Name: {patient_name}",
+        f"Age: {age}",
+        f"Medical baseline: {medical_baseline}",
+        "",
+        "Location",
+        f"GPS: {lat_text}, {lon_text}",
+        f"Location status: {location_status}",
+        "",
+        "Vitals",
+        f"Heart rate: {heart_rate}",
+        f"SpO2: {spo2}",
+        f"Perfusion index: {perfusion_index}",
+        f"Vitals confidence: {vitals_confidence}",
+    ]
+
+    if summary_lines:
+        lines.extend(["", "Summary"])
+        lines.extend(str(line) for line in summary_lines)
+    else:
+        lines.extend(["", "Summary", "missing"])
+
+    return "\n".join(lines)
+
+
 async def place_patient_call(patient_data: dict[str, Any]) -> dict[str, Any]:
     request_id = f"call_{int(time.time())}"
     script = build_script(patient_data)
+    whatsapp_body = build_whatsapp_message(patient_data)
+    target = patient_data.get("contactTarget") or config.CALL_TARGET_NUMBER
     _log(
-        "Preparing call",
+        "Preparing emergency outreach",
         {
             "requestId": request_id,
-            "target": patient_data.get("contactTarget") or config.CALL_TARGET_NUMBER,
+            "target": target,
             "location": patient_data.get("location"),
             "triage": patient_data.get("triage"),
         },
     )
-    audio_path = await elevenlabs.synthesize(script, label=request_id)
-    _log("ElevenLabs audio path:", audio_path or "none")
-
-    audio_url = None
-    if audio_path and config.PUBLIC_BASE_URL:
-        audio_url = f"{config.PUBLIC_BASE_URL.rstrip('/')}/audio/{Path(audio_path).name}"
-    _log("Public audio URL:", audio_url or "none")
-
-    call_sid, call_error = await twilio.place_call(
-        script_text=script,
-        to_number=patient_data.get("contactTarget") or config.CALL_TARGET_NUMBER,
-        audio_url=audio_url,
+    _log(
+        "WhatsApp dispatch",
+        {
+            "requestId": request_id,
+            "target": target,
+            "chars": len(whatsapp_body),
+            "preview": whatsapp_body[:160],
+        },
     )
-    _log("Twilio result", {"callSid": call_sid, "error": call_error})
+    whatsapp_sid, whatsapp_error = await twilio.send_whatsapp_message(
+        whatsapp_body,
+        to_number=target,
+    )
+    _log("WhatsApp result", {"whatsappSid": whatsapp_sid, "error": whatsapp_error})
+
+    _log(
+        "ElevenLabs outbound call dispatch",
+        {
+            "requestId": request_id,
+            "target": target,
+            "chars": len(script),
+            "preview": script[:160],
+        },
+    )
+    call_sid, conversation_id, call_error = await elevenlabs.place_outbound_call(
+        script_text=script,
+        to_number=target,
+    )
+    _log(
+        "ElevenLabs outbound call result",
+        {
+            "callSid": call_sid,
+            "conversationId": conversation_id,
+            "error": call_error,
+        },
+    )
 
     if call_sid:
         status = "called"
-        notes = "Call placed successfully."
-    elif audio_path:
-        status = "voiced"
-        notes = (
-            f"Voice synthesized, but Twilio could not place the call. {call_error}"
-            if call_error
-            else "Voice synthesized, but Twilio could not place the call."
-        )
+        notes = "Call placed successfully through ElevenLabs."
     else:
         status = "failed"
-        notes = call_error or "Voice synthesis or Twilio calling is not configured."
+        notes = call_error or "ElevenLabs outbound calling is not configured."
+
+    notes_parts: list[str] = []
+    if whatsapp_sid:
+        notes_parts.append(f"WhatsApp sent (SID {whatsapp_sid}).")
+    elif whatsapp_error:
+        notes_parts.append(f"WhatsApp failed: {whatsapp_error}")
+    notes_parts.append(notes)
 
     return {
-        "ok": call_sid is not None,
+        "ok": call_sid is not None or whatsapp_sid is not None,
         "status": status,
         "callSid": call_sid,
+        "whatsappSid": whatsapp_sid,
         "rescueScript": script,
-        "notes": notes,
-        "audioUrl": audio_url,
+        "notes": " ".join(notes_parts),
+        "audioUrl": None,
     }
 
 

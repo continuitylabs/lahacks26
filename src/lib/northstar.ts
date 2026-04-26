@@ -24,6 +24,7 @@ export type TranscriptTurn = { role: 'user' | 'assistant'; text: string };
 
 export type ReportPayload = {
   userName: string;
+  age?: number | null;
   latitude: number;
   longitude: number;
   conditionSummary: string;
@@ -33,6 +34,10 @@ export type ReportPayload = {
   heartRateBpm?: number;
   spo2?: number;
   confidence?: number;
+  medicalNotes?: string;
+  systolic?: number;
+  diastolic?: number;
+  vitalsConfidence?: number;
   emergencyContact?: string;
   /** Authorize the agent network to actually place the Twilio call. */
   placeCall?: boolean;
@@ -53,6 +58,7 @@ export async function reportIncident(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       user_name: p.userName,
+      age: p.age,
       latitude: p.latitude,
       longitude: p.longitude,
       condition_summary: p.conditionSummary,
@@ -62,6 +68,10 @@ export async function reportIncident(
       heart_rate_bpm: p.heartRateBpm,
       spo2: p.spo2,
       confidence: p.confidence,
+      medical_notes: p.medicalNotes,
+      systolic: p.systolic,
+      diastolic: p.diastolic,
+      vitals_confidence: p.vitalsConfidence,
       emergency_contact: p.emergencyContact,
       place_call: p.placeCall ?? false,
     }),
