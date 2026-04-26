@@ -2,6 +2,7 @@ import { useRouter, useSegments } from 'expo-router';
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 
 import { FallAlert } from '@/components/fall-alert';
+import { useAcousticDistressDetector } from '@/hooks/use-acoustic-distress-detector';
 import { useFallDetector } from '@/hooks/use-fall-detector';
 import { useProfileState } from '@/src/lib/profile-store-provider';
 
@@ -10,29 +11,38 @@ type FallDetectorContextValue = {
   simulate: () => void;
 };
 
+type AlertSource = 'fall' | 'acoustic';
+
 const FallDetectorContext = createContext<FallDetectorContextValue | null>(null);
 
 /** Routes on which the listener should NOT run — the user is already in an incident flow. */
-const PAUSED_ROUTES = new Set(['triage', 'rescue', 'report-incident']);
+const PAUSED_ROUTES = new Set(['triage', 'rescue', 'report-incident', 'yamnet']);
 
 export function FallDetectorProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const segments = useSegments();
   const [alertVisible, setAlertVisible] = useState(false);
   const { startIncident } = useProfileState();
+  const [alertSource, setAlertSource] = useState<AlertSource>('fall');
 
   // Pause when in any incident-flow screen, or while the alert is already up
   // (the alert covers the cooldown window for visible duration).
   const inIncidentFlow = segments.some((s) => PAUSED_ROUTES.has(s));
   const paused = inIncidentFlow || alertVisible;
 
-  const handleFall = useCallback(() => {
+  const showAlert = useCallback((source: AlertSource) => {
+    setAlertSource(source);
     setAlertVisible(true);
   }, []);
 
   const { simulate: hookSimulate } = useFallDetector({
     paused,
-    onFall: handleFall,
+    onFall: () => showAlert('fall'),
+  });
+
+  useAcousticDistressDetector({
+    paused,
+    onDistress: () => showAlert('acoustic'),
   });
 
   const simulate = useCallback(() => {
@@ -62,6 +72,7 @@ export function FallDetectorProvider({ children }: { children: ReactNode }) {
       {children}
       <FallAlert
         visible={alertVisible}
+        source={alertSource}
         onDismiss={handleDismiss}
         onConfirm={handleConfirm}
       />
