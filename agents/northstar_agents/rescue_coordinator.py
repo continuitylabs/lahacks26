@@ -47,13 +47,25 @@ from .tools import claude
 
 # ── Agent + protocol bootstrap ──────────────────────────────────────────────
 
-_use_mailbox = bool(config.AGENTVERSE_API_KEY)
+import os
+
+# Mailbox vs endpoint:
+#   - In mailbox mode the coordinator is reachable from ASI:One but agent→agent
+#     traffic from anyone without a claimed mailbox slot silently fails.
+#   - In endpoint mode the local app/network can talk to the coordinator
+#     directly via localhost.
+# We default to endpoint (the common case for app development) and only flip
+# to mailbox when NORTHSTAR_USE_MAILBOX=1 is set or the run_all.py --mailbox
+# flag was passed (it sets the same env var). AGENTVERSE_API_KEY is only used
+# as a hint here for the boot banner; it does NOT auto-enable mailbox mode
+# anymore.
+_use_mailbox = os.environ.get("NORTHSTAR_USE_MAILBOX", "").lower() in {"1", "true", "yes"}
 _agent_kwargs: dict = {
     "name": "northstar_rescue_coordinator",
     "seed": config.RESCUE_COORDINATOR_SEED,
     "port": config.RESCUE_COORDINATOR_PORT,
 }
-if _use_mailbox:
+if _use_mailbox and config.AGENTVERSE_API_KEY:
     _agent_kwargs["mailbox"] = True
 else:
     _agent_kwargs["endpoint"] = [
@@ -514,13 +526,14 @@ async def on_chat_ack(ctx: Context, sender: str, msg: ChatAcknowledgement) -> No
 async def _on_start(ctx: Context) -> None:
     config.set_address("rescue_coordinator", agent.address)
     ctx.logger.info(f"[Coordinator] address={agent.address}")
-    if config.AGENTVERSE_API_KEY:
+    if _use_mailbox and config.AGENTVERSE_API_KEY:
         ctx.logger.info(
-            "[Coordinator] mailbox enabled — agent is reachable from ASI:One"
+            "[Coordinator] mailbox enabled — reachable from ASI:One"
         )
     else:
         ctx.logger.info(
-            "[Coordinator] AGENTVERSE_API_KEY not set — running in local-only mode"
+            "[Coordinator] endpoint mode — local app/agent traffic only "
+            "(set NORTHSTAR_USE_MAILBOX=1 or pass --mailbox for ASI:One)"
         )
 
 

@@ -62,13 +62,16 @@ type AgentPhase =
 // Hard cap on how long we wait for the fetch.ai agent network. After this
 // the page falls back to on-device data and advances to the call stage.
 const AGENT_TIMEOUT_MS = 30_000;
-// Floor on how long the page stays visible before advancing. The agent
-// network can fail almost instantly (no key, offline) — without this floor
-// the page would flash by before the user reads it.
-const MIN_DWELL_MS = 3500;
+// Floor on how long the page stays visible before advancing on the SUCCESS
+// path. We hold even a fast success here so the user can read what the
+// agents produced before the call screen takes over.
+const MIN_DWELL_MS = 15_000;
 // Brief tail after the network settles on the success path so the "Plan
 // ready" state lands before we move on.
 const SUCCESS_TAIL_MS = 1200;
+
+const NORTHSTAR_URL =
+  process.env.EXPO_PUBLIC_NORTHSTAR_URL || 'http://127.0.0.1:8000';
 
 export default function Rescue() {
   const router = useRouter();
@@ -161,7 +164,8 @@ export default function Rescue() {
           },
         });
         setAgentPhase({ kind: 'error', message });
-        advance();
+        // Don't auto-advance on error — let the user read the diagnostic
+        // panel and tap "Continue anyway" when ready.
       });
   }, [ready, state, location.status, location.coords, updateIncident, updateSession]);
 
@@ -305,8 +309,44 @@ export default function Rescue() {
             phase={agentPhase}
           />
 
+          <DiagnosticsCard phase={agentPhase} />
+
           {agentPhase.kind === 'error' ? (
             <ErrorState message={agentPhase.message} />
+          ) : null}
+
+          {agentPhase.kind === 'error' || agentPhase.kind === 'success' ? (
+            <Pressable
+              onPress={() => {
+                advanced.current = false; // allow re-advance
+                advance({ immediate: true });
+              }}
+              style={({ pressed }) => ({
+                marginTop: 8,
+                borderRadius: 999,
+                borderCurve: 'continuous',
+                backgroundColor: agentPhase.kind === 'error' ? C.star : C.glass,
+                borderWidth: agentPhase.kind === 'error' ? 0 : 1,
+                borderColor: C.edge,
+                paddingVertical: 14,
+                opacity: pressed ? 0.84 : 1,
+              })}
+            >
+              <Text
+                style={{
+                  textAlign: 'center',
+                  fontFamily: MONO,
+                  fontSize: 12,
+                  letterSpacing: 2,
+                  color: agentPhase.kind === 'error' ? C.void : C.text,
+                  fontWeight: '700',
+                }}
+              >
+                {agentPhase.kind === 'error'
+                  ? 'CONTINUE ANYWAY'
+                  : 'CONTINUE NOW'}
+              </Text>
+            </Pressable>
           ) : null}
         </ScrollView>
       </View>
@@ -402,6 +442,71 @@ function AgentRow({
         </View>
       </GlassCard>
     </Animated.View>
+  );
+}
+
+function DiagnosticsCard({ phase }: { phase: AgentPhase }) {
+  const lines: { label: string; value: string }[] = [
+    { label: 'POST', value: `${NORTHSTAR_URL}/report` },
+    { label: 'STATE', value: phase.kind.toUpperCase() },
+  ];
+  if (phase.kind === 'success') {
+    lines.push({ label: 'TIMED OUT', value: phase.timedOut ? 'true' : 'false' });
+    lines.push({ label: 'MARKDOWN', value: `${phase.markdown.length} chars` });
+  }
+  if (phase.kind === 'error') {
+    lines.push({ label: 'ERROR', value: phase.message });
+  }
+
+  return (
+    <GlassCard
+      style={{
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        gap: 6,
+        borderColor: C.edge,
+      }}
+    >
+      <Text
+        style={{
+          fontFamily: MONO,
+          color: C.faint,
+          fontSize: 10,
+          letterSpacing: 2,
+          marginBottom: 2,
+        }}
+      >
+        DEBUG
+      </Text>
+      {lines.map((l) => (
+        <View key={l.label} style={{ flexDirection: 'row', gap: 8 }}>
+          <Text
+            selectable={false}
+            style={{
+              fontFamily: MONO,
+              color: C.faint,
+              fontSize: 10,
+              letterSpacing: 1.4,
+              minWidth: 80,
+            }}
+          >
+            {l.label}
+          </Text>
+          <Text
+            selectable
+            style={{
+              flex: 1,
+              fontFamily: MONO,
+              color: C.text,
+              fontSize: 11,
+              lineHeight: 16,
+            }}
+          >
+            {l.value}
+          </Text>
+        </View>
+      ))}
+    </GlassCard>
   );
 }
 

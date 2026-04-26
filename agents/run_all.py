@@ -189,18 +189,17 @@ from __future__ import annotations
 
 import sys
 
-from uagents import Bureau
-
-from northstar_agents import config, rescue_coordinator
+from northstar_agents import rescue_coordinator
 from northstar_agents.test_client import DEMO_PROMPT, make_test_client
 
 
 def main() -> None:
     prompt = sys.argv[1] if len(sys.argv) > 1 else DEMO_PROMPT
     coord_addr = rescue_coordinator.agent.address
-    bureau = Bureau()
-    bureau.add(make_test_client(coord_addr, prompt))
-    bureau.run()
+    client = make_test_client(coord_addr, prompt)
+    # Run the client directly (no Bureau wrap — that would try to bind port 8000
+    # which is already held by the rescue coordinator subprocess).
+    client.run()
 
 
 if __name__ == "__main__":
@@ -251,7 +250,9 @@ def main() -> None:
     parser.add_argument(
         "--local",
         action="store_true",
-        help="Run as a single Bureau in one process. No Agentverse, no inspector.",
+        help="Run as a single Bureau in one process (no per-agent REST ports). "
+        "Use this for smoke-testing the agent network only; the Phone Agent's "
+        "REST /report endpoint is NOT exposed in this mode.",
     )
     parser.add_argument(
         "--smoke-test",
@@ -264,7 +265,17 @@ def main() -> None:
         default=None,
         help="Custom prompt for the smoke-test client (implies --smoke-test).",
     )
+    parser.add_argument(
+        "--mailbox",
+        action="store_true",
+        help="Run the Rescue Coordinator in Agentverse mailbox mode (for ASI:One). "
+        "Default is endpoint mode so the local app can talk to it directly. "
+        "Requires AGENTVERSE_API_KEY.",
+    )
     args = parser.parse_args()
+
+    if args.mailbox:
+        os.environ["NORTHSTAR_USE_MAILBOX"] = "1"
 
     smoke_test = args.smoke_test or args.prompt is not None
 

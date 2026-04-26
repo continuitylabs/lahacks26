@@ -68,27 +68,16 @@ class ReportResponse(Model):
 # ── Agent bootstrap ────────────────────────────────────────────────────────
 
 
-# Bootstrap with the same dual-mode logic as the rescue coordinator. If
-# AGENTVERSE_API_KEY is set, the four track agents register themselves via
-# Agentverse mailboxes — meaning their resolved endpoint in the Almanac is
-# the mailbox URL, not localhost. To reach those agents over the Chat
-# Protocol the phone agent has to authenticate as a mailbox client itself,
-# otherwise `ctx.send()` resolves the destination to an Agentverse URL we
-# can't post to. The REST server keeps running on the same port either way
-# — `on_rest_post` works in both endpoint and mailbox configurations.
-_use_mailbox = bool(config.AGENTVERSE_API_KEY)
-_agent_kwargs: dict = {
-    "name": "northstar_phone_agent",
-    "seed": config.PHONE_AGENT_SEED,
-    "port": config.PHONE_AGENT_PORT,
-}
-if _use_mailbox:
-    _agent_kwargs["mailbox"] = True
-else:
-    _agent_kwargs["endpoint"] = [
-        f"http://127.0.0.1:{config.PHONE_AGENT_PORT}/submit"
-    ]
-agent = Agent(**_agent_kwargs)
+# Phone Agent is local-only (the user's device); it doesn't need ASI:One
+# discoverability. We always use a localhost endpoint so its outbound
+# `ctx.send()` to the coordinator routes via the local Almanac → coordinator's
+# mailbox/endpoint without needing the phone agent's own mailbox to be claimed.
+agent = Agent(
+    name="northstar_phone_agent",
+    seed=config.PHONE_AGENT_SEED,
+    port=config.PHONE_AGENT_PORT,
+    endpoint=[f"http://127.0.0.1:{config.PHONE_AGENT_PORT}/submit"],
+)
 
 chat_proto = Protocol(spec=chat_protocol_spec)
 
