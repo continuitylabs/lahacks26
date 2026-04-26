@@ -135,17 +135,6 @@ export default function Home() {
               backgroundColor: 'rgba(11,14,18,0.55)',
             }}
           >
-            <View
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: dotColor,
-                shadowColor: dotColor,
-                shadowOpacity: 0.8,
-                shadowRadius: 6,
-              }}
-            />
             <Text
               selectable
               style={{

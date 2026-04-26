@@ -77,7 +77,7 @@ export default function Info() {
           <Layer
             chip="ZETIC · ON-DEVICE"
             title="Triage"
-            body="Rear camera + flash capture a fingertip PPG waveform offline, giving Northstar a quick pulse, SpO2 estimate, and blood-pressure trend before rescue coordination begins."
+            body="Rear camera + flash capture a fingertip PPG waveform offline, giving Northstar a quick pulse and SpO2 estimate before rescue coordination begins."
           />
           <Layer
             chip="FETCH.AI · AGENTVERSE"

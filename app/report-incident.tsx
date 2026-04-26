@@ -103,7 +103,7 @@ export default function ReportIncident() {
           <Step
             number="1"
             title="Triage"
-            body="Cover the rear camera and flash with your fingertip. Northstar reads a pulse waveform on-device to estimate oxygen saturation and blood pressure trend."
+            body="Cover the rear camera and flash with your fingertip. Northstar reads a pulse waveform on-device to estimate heart rate and oxygen saturation."
             chip="ZETIC"
           />
           <Step

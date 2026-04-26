@@ -31,8 +31,6 @@ export type PpgFrameSample = {
 export type EstimatedVitals = {
   heartRate: number;
   spo2: number;
-  systolic: number;
-  diastolic: number;
   perfusion: number;
   confidence: number;
   samplesUsed: number;
@@ -284,9 +282,7 @@ export function estimateVitalsFromSamples(
   const intervals = hr ? hr.intervals : [];
 
   // Demo clamp: outside-the-resting-band readings get pinned into [65, 95]
-  // so the on-stage demo always shows a healthy-looking pulse. Applied
-  // before the BP calculation so the systolic/diastolic remain coherent
-  // with the displayed HR.
+  // so the on-stage demo always shows a healthy-looking pulse.
   const bpm =
     rawBpm < 65 || rawBpm > 95 ? 65 + Math.floor(Math.random() * 31) : rawBpm;
 
@@ -303,17 +299,6 @@ export function estimateVitalsFromSamples(
       : 0.5;
   const variabilityPenalty = clamp(intervalVariability * 2, 0, 1);
 
-  const systolic = clamp(
-    Math.round(108 + perfusion * 18 + (bpm - 65) * 0.32 - variabilityPenalty * 6),
-    96,
-    150
-  );
-  const diastolic = clamp(
-    Math.round(66 + perfusion * 12 + (bpm - 65) * 0.18 - variabilityPenalty * 4),
-    58,
-    98
-  );
-
   const sampleConfidence = clamp(samples.length / 50, 0, 1);
   const peakConfidence = clamp(intervals.length / 8, 0, 1);
   const variabilityConfidence = clamp(1 - variabilityPenalty, 0, 1);
@@ -329,8 +314,6 @@ export function estimateVitalsFromSamples(
   return {
     heartRate: bpm,
     spo2,
-    systolic,
-    diastolic,
     perfusion,
     confidence,
     samplesUsed: samples.length,
