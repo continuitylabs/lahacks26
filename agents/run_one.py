@@ -13,8 +13,9 @@ from importlib import import_module
 _MODULES: dict[str, str] = {
     "rescue_coordinator": "northstar_agents.rescue_coordinator",
     "location_scout": "northstar_agents.location_scout",
-    "medical_coordinator": "northstar_agents.medical_coordinator",
-    "contact_orchestrator": "northstar_agents.contact_orchestrator",
+    "weather_analyst": "northstar_agents.weather_analyst",
+    "script_composer": "northstar_agents.script_composer",
+    "next_steps_planner": "northstar_agents.next_steps_planner",
     "phone_agent": "northstar_agents.phone_agent",
 }
 
