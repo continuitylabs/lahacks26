@@ -10,9 +10,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlassCard } from '@/components/glass-card';
-// Speech I/O temporarily disabled to isolate Zetic load crash.
-// import { useSpeechOutput } from '@/hooks/use-speech-output';
-// import { useVoiceInput } from '@/hooks/use-voice-input';
+import { useSpeechOutput } from '@/hooks/use-speech-output';
+import { useVoiceInput } from '@/hooks/use-voice-input';
 import { useZeticChat } from '@/hooks/use-zetic-chat';
 import { Pressable, Text, TextInput, View } from '@/src/tw';
 
@@ -54,23 +53,14 @@ export default function Chat() {
   const insets = useSafeAreaInsets();
   const bottomPad = TAB_BAR_HEIGHT + Math.max(insets.bottom, 16);
 
-  // Speech I/O stubbed out — these no-op so the existing UI bindings still
-  // type-check, but no native speech modules are touched.
-  const voice = {
-    state: 'idle' as 'idle' | 'requesting' | 'listening' | 'error',
-    transcript: '',
-    error: null as { code?: string; message: string } | null,
-    start: () => {},
-    stop: () => {},
-    cancel: () => {},
-  };
-  const speech = {
-    enabled: false,
-    isSpeaking: false,
-    speak: (_text: string) => {},
-    stop: () => {},
-    toggleEnabled: () => {},
-  };
+  const speech = useSpeechOutput();
+  const voice = useVoiceInput({
+    onPartial: (text) => setInput(text),
+    onFinal: (text) => {
+      setInput('');
+      send(text);
+    },
+  });
 
   useEffect(() => {
     load();
@@ -80,12 +70,29 @@ export default function Chat() {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [messages.length, stream]);
 
+  const lastSpokenIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isGenerating) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return;
+    if (lastSpokenIdRef.current === last.id) return;
+    lastSpokenIdRef.current = last.id;
+    speech.speak(last.text);
+  }, [messages, isGenerating, speech]);
+
   const ready = status.kind === 'ready';
   const canSend = ready && !isGenerating && input.trim().length > 0;
-  const isListening = false;
-  const canVoice = false;
+  const isListening =
+    voice.state === 'listening' || voice.state === 'requesting';
+  const canVoice = ready && !isGenerating;
 
-  const toggleVoice = useCallback(() => {}, []);
+  const toggleVoice = useCallback(() => {
+    if (isListening) {
+      voice.stop();
+    } else {
+      voice.start();
+    }
+  }, [isListening, voice]);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>

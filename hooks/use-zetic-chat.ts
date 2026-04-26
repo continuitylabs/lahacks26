@@ -14,10 +14,10 @@ export type LoadStatus =
   | { kind: 'ready' }
   | { kind: 'error'; message: string };
 
-const MODEL_ID = 'Steve/Qwen3.5-2B';
-const PERSONAL_KEY = 'dev_7fee89ec7a6640808c3d7cf2e66c62b8';
+const MODEL_ID = 'Qwen/Qwen3-0.6B';
 
-const MAX_PROMPT_CHARS = 3000;
+// ~4 chars/token, targeting ~30k input tokens to leave room for generation within Qwen3's 32k window
+const MAX_PROMPT_CHARS = 120000;
 
 function buildPrompt(history: ChatMessage[]): string {
   const lines: string[] = [];
@@ -79,7 +79,10 @@ export function useZeticChat() {
     }
     setStatus({ kind: 'loading', progress: 0 });
     try {
-      await Zetic.loadModel({ personalKey: PERSONAL_KEY, name: MODEL_ID });
+      await Zetic.loadModel({
+        personalKey: process.env.EXPO_PUBLIC_ZETIC_KEY!,
+        name: MODEL_ID,
+      });
       setStatus({ kind: 'ready' });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
