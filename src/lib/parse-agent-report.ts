@@ -1,31 +1,96 @@
 /**
- * Best-effort parser for the rescue coordinator's markdown response. Pulls
- * out the rescue script (the blockquote under "Drafted dispatch script:")
- * and a few field-style lines.
+ * Parser for the rescue coordinator's response. Prefers a fenced ```json```
+ * block at the end of the markdown (the Coordinator emits one); falls back
+ * to scraping the legacy "Drafted dispatch script:" blockquote when only the
+ * markdown is present.
  *
  * Failures are silent — every field is independently optional, callers fall
  * back to the on-device script when extraction fails.
  */
 
+export type ParsedNextStepCard = { title: string; body: string };
+
 export type ParsedAgentReport = {
   rescueScript: string | null;
   extractionRecommendation: string | null;
   agentSeverity: string | null;
+  locationSummary: string | null;
+  weatherSummary: string | null;
+  weatherUrgencyModifier: 'elevate' | 'maintain' | 'reduce' | null;
+  nextStepsHeader: string | null;
+  nextSteps: ParsedNextStepCard[];
+  degradedAgents: string[];
 };
 
+const EMPTY: ParsedAgentReport = {
+  rescueScript: null,
+  extractionRecommendation: null,
+  agentSeverity: null,
+  locationSummary: null,
+  weatherSummary: null,
+  weatherUrgencyModifier: null,
+  nextStepsHeader: null,
+  nextSteps: [],
+  degradedAgents: [],
+};
+
+const JSON_BLOCK_RE = /```json\s*\n([\s\S]+?)```/g;
 const SEVERITY_RE = /\*\*Severity:\*\*\s*([^\n(]+)/i;
 const EXTRACTION_RE = /\*\*Extraction:\*\*\s*([^\n]+)/i;
 
-export function parseAgentReport(markdown: string): ParsedAgentReport {
-  if (!markdown) {
-    return { rescueScript: null, extractionRecommendation: null, agentSeverity: null };
+function tryParseJsonBlock(markdown: string): Partial<ParsedAgentReport> | null {
+  // Take the LAST json block (the JSON tail), since ASI:One renders are
+  // permitted to contain other code blocks earlier.
+  let match: RegExpExecArray | null;
+  let last: RegExpExecArray | null = null;
+  JSON_BLOCK_RE.lastIndex = 0;
+  while ((match = JSON_BLOCK_RE.exec(markdown)) !== null) {
+    last = match;
   }
+  if (!last) return null;
+  try {
+    const obj = JSON.parse(last[1]) as Record<string, unknown>;
+    return {
+      rescueScript: typeof obj.rescueScript === 'string' ? obj.rescueScript : null,
+      extractionRecommendation:
+        typeof obj.extractionRecommendation === 'string' ? obj.extractionRecommendation : null,
+      agentSeverity: typeof obj.agentSeverity === 'string' ? obj.agentSeverity : null,
+      locationSummary:
+        typeof obj.locationSummary === 'string' ? obj.locationSummary : null,
+      weatherSummary:
+        typeof obj.weatherSummary === 'string' ? obj.weatherSummary : null,
+      weatherUrgencyModifier:
+        obj.weatherUrgencyModifier === 'elevate' ||
+        obj.weatherUrgencyModifier === 'maintain' ||
+        obj.weatherUrgencyModifier === 'reduce'
+          ? obj.weatherUrgencyModifier
+          : null,
+      nextStepsHeader:
+        typeof obj.nextStepsHeader === 'string' ? obj.nextStepsHeader : null,
+      nextSteps: Array.isArray(obj.nextSteps)
+        ? obj.nextSteps
+            .filter(
+              (c): c is { title: string; body: string } =>
+                typeof c === 'object' &&
+                c !== null &&
+                typeof (c as Record<string, unknown>).title === 'string' &&
+                typeof (c as Record<string, unknown>).body === 'string'
+            )
+            .map((c) => ({ title: c.title, body: c.body }))
+        : [],
+      degradedAgents: Array.isArray(obj.degradedAgents)
+        ? obj.degradedAgents.filter((s): s is string => typeof s === 'string')
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
 
+function legacyScrape(markdown: string): Partial<ParsedAgentReport> {
   const severityMatch = markdown.match(SEVERITY_RE);
   const extractionMatch = markdown.match(EXTRACTION_RE);
 
-  // The dispatch script is rendered as a multi-line blockquote. We collect
-  // contiguous "> "-prefixed lines that follow "Drafted dispatch script:".
   let rescueScript: string | null = null;
   const lines = markdown.split('\n');
   const scriptIdx = lines.findIndex((l) =>
@@ -57,4 +122,14 @@ export function parseAgentReport(markdown: string): ParsedAgentReport {
     extractionRecommendation: extractionMatch?.[1]?.trim() ?? null,
     agentSeverity: severityMatch?.[1]?.trim() ?? null,
   };
+}
+
+export function parseAgentReport(markdown: string): ParsedAgentReport {
+  if (!markdown) return EMPTY;
+
+  const fromJson = tryParseJsonBlock(markdown);
+  const fromLegacy = legacyScrape(markdown);
+
+  // Merge, preferring JSON values.
+  return { ...EMPTY, ...fromLegacy, ...(fromJson ?? {}) };
 }
