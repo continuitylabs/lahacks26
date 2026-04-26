@@ -6,9 +6,8 @@ import { Platform } from 'react-native';
 
 import { GlassCard } from '@/components/glass-card';
 import { usePpgVitals } from '@/hooks/use-ppg-vitals';
-import { dummyTriage, dummyVitals } from '@/src/lib/dummy-incident';
+import { dummyVitals } from '@/src/lib/dummy-incident';
 import { useProfileState } from '@/src/lib/profile-store-provider';
-import { runOnDeviceTriage } from '@/src/zetic/run-triage';
 import { Pressable, Text, View } from '@/src/tw';
 
 const SERIF =
@@ -87,42 +86,6 @@ export default function Triage() {
       },
     });
   }, [phase, result, updateSession, updateIncident]);
-
-  // Derive an on-device triage summary the moment vitals settle. We seed the
-  // model with whatever loose context we have (medical baseline + any prior
-  // chat conversation) and write the structured slice into AsyncStorage so
-  // the rescue stage can compose its payload from it instead of blocking on
-  // the agent network for the same information.
-  const triageSeededRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (phase !== 'complete' || !result) return;
-    const incidentId = state.session.incident?.id ?? null;
-    if (!incidentId || triageSeededRef.current === incidentId) return;
-    triageSeededRef.current = incidentId;
-
-    const baseline = state.profile.medicalNotes.trim();
-    const seed =
-      (baseline ? `Patient baseline: ${baseline}. ` : '') +
-      `Pulse ${result.heartRate} bpm, SpO2 ${result.spo2}%, BP ${result.systolic}/${result.diastolic} (confidence ${(result.confidence * 100).toFixed(0)}%).`;
-
-    void runOnDeviceTriage(seed, { timeoutMs: 8000 }).then((triage) => {
-      updateIncident({
-        triage: {
-          summary: triage.summary,
-          rawText: triage.rawText,
-          findings: triage.findings,
-          severity: triage.severity,
-          capturedAt: triage.capturedAt,
-        },
-      });
-      updateSession({
-        lastTriageReport: {
-          summary: triage.summary,
-          capturedAt: triage.capturedAt,
-        },
-      });
-    });
-  }, [phase, result, state.session.incident?.id, state.profile.medicalNotes, updateIncident, updateSession]);
 
   const readingTone = useMemo(() => {
     if (!result) {
@@ -219,14 +182,11 @@ export default function Triage() {
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable
               onPress={() => {
-                // Stamp dummy triage + vitals into the active incident, then
-                // bounce to /rescue. Useful for exercising the call layer
-                // when the camera or PPG signal isn't usable for the demo.
-                updateIncident({
-                  triage: dummyTriage(),
-                  vitals: dummyVitals(),
-                });
-                router.replace('/rescue');
+                // Stamp dummy vitals into the active incident and jump to
+                // the on-device triage placeholder. Useful for exercising the
+                // call layer when the camera or PPG signal isn't usable.
+                updateIncident({ vitals: dummyVitals() });
+                router.replace('/llm-triage');
               }}
               style={{
                 borderRadius: 999,
@@ -538,7 +498,7 @@ export default function Triage() {
                     </Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => router.replace('/rescue')}
+                    onPress={() => router.replace('/llm-triage')}
                     disabled={!result}
                     style={({ pressed }) => ({
                       flex: 1,

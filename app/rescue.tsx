@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView } from 'react-native';
 import Animated, {
   Easing,
@@ -13,7 +13,6 @@ import Animated, {
 
 import { GlassCard } from '@/components/glass-card';
 import { useCurrentLocation } from '@/hooks/use-current-location';
-import { requestEmergencyCall } from '@/src/call-bridge';
 import { composeIncidentPayload } from '@/src/lib/compose-incident-payload';
 import {
   dummyCoords,
@@ -23,7 +22,6 @@ import {
 import { reportIncident } from '@/src/lib/northstar';
 import { parseAgentReport } from '@/src/lib/parse-agent-report';
 import { useProfileState } from '@/src/lib/profile-store-provider';
-import type { PatientData } from '@/src/patient-data';
 import { Pressable, Text, View } from '@/src/tw';
 
 const SERIF =
@@ -61,36 +59,31 @@ type AgentPhase =
   | { kind: 'success'; markdown: string; timedOut: boolean }
   | { kind: 'error'; message: string };
 
-type CallPhase =
-  | { kind: 'idle' }
-  | { kind: 'dialing' }
-  | { kind: 'placed'; callSid: string | null; notes: string | null }
-  | { kind: 'failed'; message: string };
-
-// Hard cap on how long the rescue page waits for the agent network. After
-// this, the user can still press "Call dispatch" — we ship the on-device
-// composed script. Independent of the phone agent's own server-side timeout.
+// Hard cap on how long we wait for the fetch.ai agent network. After this
+// the page falls back to on-device data and advances to the call stage.
 const AGENT_TIMEOUT_MS = 30_000;
+// Brief pause after the agent network settles so the user sees the success
+// state before we auto-advance to the final call screen.
+const ADVANCE_DELAY_MS = 1200;
 
 export default function Rescue() {
   const router = useRouter();
   const location = useCurrentLocation();
   const { state, loaded, updateIncident, updateSession } = useProfileState();
   const [agentPhase, setAgentPhase] = useState<AgentPhase>({ kind: 'idle' });
-  const [callPhase, setCallPhase] = useState<CallPhase>({ kind: 'idle' });
   const fired = useRef(false);
+  const advanced = useRef(false);
 
   const ready = location.status !== 'pending' && loaded;
   const incident = state.session.incident;
-
-  // The active agent request's abort handle. Held in a ref so the Skip
-  // button (or unmount) can cancel the in-flight request without rerunning
-  // the kick-off effect.
   const agentAbortRef = useRef<AbortController | null>(null);
 
-  // Kick off the fetch.ai round-trip the moment we have everything we need.
-  // The page is *not* gated on this — even if the agent network times out,
-  // the user can still proceed to the call using on-device data.
+  const advance = () => {
+    if (advanced.current) return;
+    advanced.current = true;
+    router.replace('/call');
+  };
+
   useEffect(() => {
     if (!ready || fired.current) return;
     fired.current = true;
@@ -114,8 +107,6 @@ export default function Rescue() {
           timedOut: result.timedOut,
         });
 
-        // Persist the agent output. Other layers (call bridge, future demo
-        // panels) read this rather than holding their own copy.
         const parsed = parseAgentReport(result.markdown);
         updateIncident({
           agentReport: {
@@ -130,13 +121,11 @@ export default function Rescue() {
         updateSession({
           lastReportMarkdown: { markdown: result.markdown, capturedAt: Date.now() },
         });
+        setTimeout(advance, ADVANCE_DELAY_MS);
       })
       .catch((err: unknown) => {
         clearTimeout(timer);
         const message = err instanceof Error ? err.message : String(err);
-        // Treat any failure as "agent network unavailable" — record an empty
-        // agentReport so downstream stages know we tried and fell back, and
-        // surface the error to the user as informational, not blocking.
         updateIncident({
           agentReport: {
             markdown: '',
@@ -148,132 +137,11 @@ export default function Rescue() {
           },
         });
         setAgentPhase({ kind: 'error', message });
+        setTimeout(advance, ADVANCE_DELAY_MS);
       });
   }, [ready, state, location.status, location.coords, updateIncident, updateSession]);
 
-  const buildPatientData = useCallback((): PatientData => {
-    const triage = incident?.triage ?? null;
-    const vitals = incident?.vitals ?? null;
-    const coords = incident?.coords ?? null;
-
-    const summary: string[] = [];
-    if (triage?.summary) summary.push(`Triage: ${triage.summary}`);
-    if (triage?.severity) summary.push(`Severity: ${triage.severity.toUpperCase()}`);
-    if (triage?.findings.length)
-      summary.push(`Findings: ${triage.findings.join(', ')}`);
-    if (vitals)
-      summary.push(
-        `Vitals: HR ${vitals.heartRate} bpm, SpO2 ${vitals.spo2}%, BP ${vitals.systolic}/${vitals.diastolic}`
-      );
-    if (incident?.agentReport?.rescueScript)
-      summary.push(
-        `Agent script: ${incident.agentReport.rescueScript.slice(0, 240)}`
-      );
-    if (incident?.agentReport?.extractionRecommendation)
-      summary.push(
-        `Extraction: ${incident.agentReport.extractionRecommendation}`
-      );
-
-    return {
-      collectedAt: new Date().toISOString(),
-      contactTarget:
-        state.profile.emergencyContact.phone.trim() || '',
-      rescueScript: incident?.agentReport?.rescueScript ?? undefined,
-      patient: {
-        name: state.profile.userName.trim() || 'Unknown hiker',
-        age: state.profile.age != null ? String(state.profile.age) : '',
-        medicalBaseline: state.profile.medicalNotes.trim(),
-      },
-      location: {
-        latitude:
-          coords?.latitude ?? location.coords.latitude,
-        longitude:
-          coords?.longitude ?? location.coords.longitude,
-        status: location.status,
-      },
-      triage: {
-        confidence: vitals?.confidence ?? null,
-        signalStrength: vitals?.confidence ?? 0,
-        framesAttempted: 0,
-        samplesCaptured: 0,
-        heartRate: vitals?.heartRate ?? null,
-        spo2: vitals?.spo2 ?? null,
-        respiratoryRate: null,
-        hrv: null,
-        systolic: vitals?.systolic ?? null,
-        diastolic: vitals?.diastolic ?? null,
-        perfusionIndex: null,
-      },
-      summary,
-    };
-  }, [incident, state.profile, location.coords, location.status]);
-
-  const placeCall = useCallback(async () => {
-    if (callPhase.kind === 'dialing') return;
-    setCallPhase({ kind: 'dialing' });
-    updateIncident({
-      call: {
-        status: 'pending',
-        callSid: null,
-        rescueScript: incident?.agentReport?.rescueScript ?? null,
-        audioUrl: null,
-        notes: null,
-        capturedAt: Date.now(),
-      },
-    });
-    try {
-      const result = await requestEmergencyCall(buildPatientData());
-      const persistStatus =
-        result.status === 'called'
-          ? 'placed'
-          : result.status === 'voiced'
-            ? 'voiced'
-            : result.status === 'drafted'
-              ? 'drafted'
-              : 'failed';
-      updateIncident({
-        call: {
-          status: persistStatus,
-          callSid: result.callSid ?? null,
-          rescueScript: result.rescueScript ?? incident?.agentReport?.rescueScript ?? null,
-          audioUrl: result.audioUrl ?? null,
-          notes: result.notes ?? null,
-          capturedAt: Date.now(),
-        },
-      });
-      if (result.ok) {
-        setCallPhase({
-          kind: 'placed',
-          callSid: result.callSid ?? null,
-          notes: result.notes ?? null,
-        });
-      } else {
-        setCallPhase({
-          kind: 'failed',
-          message: result.notes ?? 'The bridge could not place the call.',
-        });
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      updateIncident({
-        call: {
-          status: 'failed',
-          callSid: null,
-          rescueScript: incident?.agentReport?.rescueScript ?? null,
-          audioUrl: null,
-          notes: message,
-          capturedAt: Date.now(),
-        },
-      });
-      setCallPhase({ kind: 'failed', message });
-    }
-  }, [buildPatientData, callPhase.kind, incident, updateIncident]);
-
-  const skipAgentWait = useCallback(() => {
-    // Cancel any in-flight agent request, mark the agent report as a forced
-    // skip so the script section uses the on-device fallback, and stamp any
-    // missing pipeline data with dummy values so the call layer has
-    // believable inputs to send to ElevenLabs/Twilio.
+  const skip = () => {
     agentAbortRef.current?.abort();
     setAgentPhase({ kind: 'success', markdown: '', timedOut: true });
     updateIncident({
@@ -295,34 +163,8 @@ export default function Rescue() {
         capturedAt: Date.now(),
       },
     });
-  }, [incident, location.coords, location.status, updateIncident]);
-
-  const renderedScript = useMemo(() => {
-    if (incident?.agentReport?.rescueScript) {
-      return incident.agentReport.rescueScript;
-    }
-    // Local fallback script when the agent network isn't available.
-    const lines: string[] = [
-      'This is an automated emergency alert from Northstar.',
-    ];
-    const name = state.profile.userName.trim() || 'a hiker';
-    lines.push(`I am calling about ${name}.`);
-    if (incident?.coords) {
-      lines.push(
-        `Their last known coordinates are latitude ${incident.coords.latitude.toFixed(5)}, longitude ${incident.coords.longitude.toFixed(5)}.`
-      );
-    }
-    if (incident?.triage?.summary) {
-      lines.push(`On-device triage: ${incident.triage.summary}`);
-    }
-    if (incident?.vitals) {
-      lines.push(
-        `Vitals: pulse ${incident.vitals.heartRate} bpm, oxygen ${incident.vitals.spo2}%, blood pressure ${incident.vitals.systolic}/${incident.vitals.diastolic}.`
-      );
-    }
-    lines.push('Please dispatch help and stand by for further updates.');
-    return lines.join(' ');
-  }, [incident, state.profile.userName]);
+    advance();
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: C.void }}>
@@ -356,45 +198,30 @@ export default function Rescue() {
               fontFamily: MONO,
             }}
           >
-            RESCUE COORDINATION
+            FETCH.AI AGENTVERSE
           </Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable
-              onPress={skipAgentWait}
+          <Pressable
+            onPress={skip}
+            style={{
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: 'rgba(201,138,63,0.6)',
+              backgroundColor: 'rgba(240,184,110,0.12)',
+              paddingHorizontal: 12,
+              paddingVertical: 4,
+            }}
+          >
+            <Text
               style={{
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: 'rgba(201,138,63,0.6)',
-                backgroundColor: 'rgba(240,184,110,0.12)',
-                paddingHorizontal: 12,
-                paddingVertical: 4,
+                fontSize: 11,
+                letterSpacing: 1.6,
+                color: C.star,
+                fontFamily: MONO,
               }}
             >
-              <Text
-                style={{
-                  fontSize: 11,
-                  letterSpacing: 1.6,
-                  color: C.star,
-                  fontFamily: MONO,
-                }}
-              >
-                SKIP
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.dismissAll()}
-              style={{
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: C.edge,
-                backgroundColor: C.glass,
-                paddingHorizontal: 12,
-                paddingVertical: 4,
-              }}
-            >
-              <Text style={{ fontSize: 12, color: C.muted }}>Done</Text>
-            </Pressable>
-          </View>
+              SKIP
+            </Text>
+          </Pressable>
         </View>
 
         <Text
@@ -405,42 +232,43 @@ export default function Rescue() {
             color: C.text,
             lineHeight: 38,
             marginTop: 8,
-            marginBottom: 16,
+            marginBottom: 8,
           }}
         >
           {agentPhase.kind === 'success' && !agentPhase.timedOut
             ? 'Plan ready.'
-            : 'Coordinating rescue…'}
+            : agentPhase.kind === 'success' || agentPhase.kind === 'error'
+              ? 'Falling back to on-device data.'
+              : 'Coordinating rescue…'}
+        </Text>
+        <Text
+          selectable={false}
+          style={{ color: C.muted, fontSize: 14, lineHeight: 20, marginBottom: 20 }}
+        >
+          Three Fetch.ai agents are working in parallel. When they finish,
+          you'll be taken to the call screen automatically.
         </Text>
 
         <ScrollView
-          contentContainerStyle={{ paddingBottom: 40, gap: 16 }}
+          contentContainerStyle={{ paddingBottom: 40, gap: 14 }}
           showsVerticalScrollIndicator={false}
           style={{ flex: 1 }}
         >
-          <PipelineStatus agentPhase={agentPhase} />
-
-          {/*
-            The call CTA and the dispatch script only appear once the agent
-            network has settled — success, error, or explicit skip. Calling
-            dispatch while the rescue coordinator is still drafting would
-            ship the local fallback script even when a richer agent-drafted
-            one is moments away.
-          */}
-          {agentPhase.kind !== 'idle' && agentPhase.kind !== 'pending' ? (
-            <>
-              <ScriptCard script={renderedScript} />
-              <CallCard
-                phase={callPhase}
-                onCall={placeCall}
-                disabled={!incident}
-              />
-            </>
-          ) : null}
-
-          {agentPhase.kind === 'success' && agentPhase.markdown ? (
-            <Markdown source={agentPhase.markdown} />
-          ) : null}
+          <AgentRow
+            label="Triage Coordinator"
+            chip="REPORT"
+            phase={agentPhase}
+          />
+          <AgentRow
+            label="Location & Routing"
+            chip="EXTRACTION"
+            phase={agentPhase}
+          />
+          <AgentRow
+            label="Dispatch Composer"
+            chip="SCRIPT"
+            phase={agentPhase}
+          />
 
           {agentPhase.kind === 'error' ? (
             <ErrorState message={agentPhase.message} />
@@ -451,7 +279,15 @@ export default function Rescue() {
   );
 }
 
-function PipelineStatus({ agentPhase }: { agentPhase: AgentPhase }) {
+function AgentRow({
+  label,
+  chip,
+  phase,
+}: {
+  label: string;
+  chip: string;
+  phase: AgentPhase;
+}) {
   const pulse = useSharedValue(0.45);
   useEffect(() => {
     pulse.value = withRepeat(
@@ -465,20 +301,18 @@ function PipelineStatus({ agentPhase }: { agentPhase: AgentPhase }) {
   }, [pulse]);
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
 
-  const idle = agentPhase.kind === 'idle';
-  const pending = agentPhase.kind === 'pending';
-  const ok = agentPhase.kind === 'success' && !agentPhase.timedOut;
+  const pending = phase.kind === 'pending';
+  const ok = phase.kind === 'success' && !phase.timedOut;
   const failed =
-    agentPhase.kind === 'error' ||
-    (agentPhase.kind === 'success' && agentPhase.timedOut);
-
+    phase.kind === 'error' || (phase.kind === 'success' && phase.timedOut);
   const tone = ok ? C.safe : failed ? C.star : C.star;
-  const label = ok
-    ? 'Agent network online'
+
+  const status = ok
+    ? 'Done'
     : failed
-      ? 'Agent network offline — using on-device script'
+      ? 'Offline — fallback'
       : pending
-        ? 'Three agents working in parallel'
+        ? 'Working…'
         : 'Idle';
 
   return (
@@ -507,7 +341,7 @@ function PipelineStatus({ agentPhase }: { agentPhase: AgentPhase }) {
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Text style={{ fontFamily: SERIF, fontSize: 16, color: C.text }}>
-              Fetch.ai Rescue Coordinator
+              {label}
             </Text>
             <Text
               style={{
@@ -522,144 +356,17 @@ function PipelineStatus({ agentPhase }: { agentPhase: AgentPhase }) {
                 fontFamily: MONO,
               }}
             >
-              CHAT PROTOCOL
+              {chip}
             </Text>
           </View>
           <Text
             style={{ marginTop: 2, fontSize: 12, color: C.muted, fontFamily: SANS }}
           >
-            {idle ? 'Awaiting GPS lock…' : label}
+            {status}
           </Text>
         </View>
       </GlassCard>
     </Animated.View>
-  );
-}
-
-function ScriptCard({ script }: { script: string }) {
-  return (
-    <GlassCard
-      style={{
-        paddingHorizontal: 16,
-        paddingTop: 14,
-        paddingBottom: 16,
-        gap: 8,
-      }}
-    >
-      <Text
-        selectable={false}
-        style={{
-          fontFamily: MONO,
-          color: C.faint,
-          fontSize: 10,
-          letterSpacing: 2.4,
-        }}
-      >
-        DRAFTED DISPATCH SCRIPT
-      </Text>
-      <Text
-        selectable
-        style={{
-          color: C.text,
-          fontFamily: SANS,
-          fontSize: 14,
-          lineHeight: 22,
-        }}
-      >
-        {script}
-      </Text>
-    </GlassCard>
-  );
-}
-
-function CallCard({
-  phase,
-  onCall,
-  disabled,
-}: {
-  phase: CallPhase;
-  onCall: () => void;
-  disabled: boolean;
-}) {
-  if (phase.kind === 'placed') {
-    return (
-      <GlassCard
-        style={{
-          paddingHorizontal: 16,
-          paddingVertical: 14,
-          gap: 6,
-          borderColor: 'rgba(108,194,138,0.4)',
-        }}
-      >
-        <Text
-          style={{
-            fontFamily: MONO,
-            color: C.safe,
-            fontSize: 10,
-            letterSpacing: 2.4,
-          }}
-        >
-          CALL PLACED
-        </Text>
-        {phase.callSid ? (
-          <Text style={{ color: C.text, fontFamily: MONO, fontSize: 12 }}>
-            SID {phase.callSid}
-          </Text>
-        ) : null}
-        {phase.notes ? (
-          <Text style={{ color: C.muted, fontFamily: SANS, fontSize: 13 }}>
-            {phase.notes}
-          </Text>
-        ) : null}
-      </GlassCard>
-    );
-  }
-
-  return (
-    <View style={{ gap: 8 }}>
-      <Pressable
-        onPress={onCall}
-        disabled={disabled || phase.kind === 'dialing'}
-        style={({ pressed }) => ({
-          borderRadius: 999,
-          borderCurve: 'continuous',
-          backgroundColor:
-            disabled || phase.kind === 'dialing'
-              ? 'rgba(229,72,77,0.45)'
-              : C.critical,
-          paddingVertical: 18,
-          opacity: pressed ? 0.84 : 1,
-          shadowColor: C.critical,
-          shadowOpacity: 0.45,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 0 },
-        })}
-      >
-        <Text
-          selectable={false}
-          style={{
-            textAlign: 'center',
-            color: C.void,
-            fontWeight: '700',
-            letterSpacing: 2.4,
-          }}
-        >
-          {phase.kind === 'dialing' ? 'DIALING…' : 'HAVE NORTHSTAR CALL DISPATCH'}
-        </Text>
-      </Pressable>
-      {phase.kind === 'failed' ? (
-        <Text
-          style={{
-            fontFamily: MONO,
-            color: C.critical,
-            fontSize: 11,
-            letterSpacing: 1.4,
-          }}
-        >
-          {phase.message}
-        </Text>
-      ) : null}
-    </View>
   );
 }
 
@@ -695,158 +402,8 @@ function ErrorState({ message }: { message: string }) {
           lineHeight: 16,
         }}
       >
-        Northstar can still call dispatch using the on-device data above.
+        Northstar will still call dispatch using on-device data.
       </Text>
-    </GlassCard>
-  );
-}
-
-// ── Markdown renderer (unchanged from prior version) ───────────────────────
-
-type Block =
-  | { kind: 'h1'; text: string }
-  | { kind: 'h2'; text: string }
-  | { kind: 'bullet'; text: string }
-  | { kind: 'quote'; text: string }
-  | { kind: 'p'; text: string }
-  | { kind: 'spacer' };
-
-function parseMarkdown(src: string): Block[] {
-  const blocks: Block[] = [];
-  for (const raw of src.split('\n')) {
-    const line = raw.replace(/\s+$/, '');
-    if (line === '') {
-      blocks.push({ kind: 'spacer' });
-      continue;
-    }
-    if (line.startsWith('## ')) {
-      blocks.push({ kind: 'h2', text: line.slice(3).trim() });
-    } else if (line.startsWith('# ')) {
-      blocks.push({ kind: 'h1', text: line.slice(2).trim() });
-    } else if (line.startsWith('- ')) {
-      blocks.push({ kind: 'bullet', text: line.slice(2).trim() });
-    } else if (line.startsWith('> ')) {
-      blocks.push({ kind: 'quote', text: line.slice(2).trim() });
-    } else {
-      blocks.push({ kind: 'p', text: line });
-    }
-  }
-  return blocks;
-}
-
-function InlineRich({ text, color, size }: { text: string; color: string; size: number }) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return (
-    <Text style={{ color, fontFamily: SANS, fontSize: size, lineHeight: size + 6 }}>
-      {parts.map((p, i) => {
-        if (p.startsWith('**') && p.endsWith('**')) {
-          return (
-            <Text key={i} style={{ fontWeight: '700', color: C.text }}>
-              {p.slice(2, -2)}
-            </Text>
-          );
-        }
-        return <Text key={i}>{p}</Text>;
-      })}
-    </Text>
-  );
-}
-
-function Markdown({ source }: { source: string }) {
-  const blocks = useMemo(() => parseMarkdown(source), [source]);
-  return (
-    <GlassCard
-      style={{
-        paddingHorizontal: 20,
-        paddingTop: 18,
-        paddingBottom: 22,
-        gap: 4,
-      }}
-    >
-      {blocks.map((b, i) => {
-        switch (b.kind) {
-          case 'h1':
-            return (
-              <Text
-                key={i}
-                style={{
-                  fontFamily: SERIF,
-                  fontSize: 26,
-                  color: C.text,
-                  marginTop: i === 0 ? 0 : 16,
-                  marginBottom: 4,
-                }}
-              >
-                {b.text}
-              </Text>
-            );
-          case 'h2':
-            return (
-              <View
-                key={i}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 8,
-                  marginTop: 14,
-                  marginBottom: 4,
-                }}
-              >
-                <View
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: 3,
-                    backgroundColor: C.star,
-                  }}
-                />
-                <Text style={{ fontFamily: SERIF, fontSize: 18, color: C.star }}>
-                  {b.text}
-                </Text>
-              </View>
-            );
-          case 'bullet':
-            return (
-              <View
-                key={i}
-                style={{
-                  flexDirection: 'row',
-                  gap: 8,
-                  paddingLeft: 4,
-                }}
-              >
-                <Text style={{ color: C.faint, fontFamily: MONO, fontSize: 14 }}>
-                  •
-                </Text>
-                <View style={{ flex: 1 }}>
-                  <InlineRich text={b.text} color={C.muted} size={14} />
-                </View>
-              </View>
-            );
-          case 'quote':
-            return (
-              <View
-                key={i}
-                style={{
-                  borderLeftWidth: 2,
-                  borderLeftColor: C.starDeep,
-                  paddingLeft: 12,
-                  marginVertical: 2,
-                }}
-              >
-                <InlineRich text={b.text} color={C.muted} size={13} />
-              </View>
-            );
-          case 'p':
-            return (
-              <View key={i}>
-                <InlineRich text={b.text} color={C.muted} size={14} />
-              </View>
-            );
-          case 'spacer':
-            return <View key={i} style={{ height: 6 }} />;
-        }
-      })}
     </GlassCard>
   );
 }

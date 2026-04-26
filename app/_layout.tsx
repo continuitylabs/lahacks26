@@ -52,6 +52,31 @@ export default function RootLayout() {
                 contentStyle: { backgroundColor: '#0b0e12' },
               }}
             />
+            <Stack.Screen
+              name="llm-triage"
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
+            <Stack.Screen
+              name="call"
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+                gestureEnabled: false,
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
+            <Stack.Screen
+              name="instructions"
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
           </Stack>
         </FallDetectorProvider>
       </ProfileStoreProvider>
