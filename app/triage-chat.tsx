@@ -113,13 +113,14 @@ export default function TriageChat() {
     return () => clearTimeout(t);
   }, [assistantRepliesAfterUser, router]);
 
-  // Persist transcript on every change. Runs both when the user sends a
-  // message and when an assistant reply finalises, so an early Continue tap
-  // always finds a fresh incident.triage slice. Skips while the opener is
-  // the only message (nothing meaningful to forward yet).
+  // Persist transcript on every change. Runs once per user send and once per
+  // assistant finalisation, so an early Continue tap always finds a fresh
+  // incident.triage slice. Skips until the user has actually said something —
+  // before that the only content is the seeded opener, which carries no
+  // patient information.
   useEffect(() => {
     if (!state.session.incident) return;
-    if (messages.length === 0) return;
+    if (!messages.some((m) => m.role === 'user')) return;
 
     const transcript = messages.map((m) => ({ role: m.role, text: m.text }));
     const assistantTurns = messages.filter((m) => m.role === 'assistant');
@@ -138,7 +139,7 @@ export default function TriageChat() {
         capturedAt: Date.now(),
       },
     });
-  }, [messages, state.session.incident, updateIncident]);
+  }, [messages, state.session.incident?.id, updateIncident]);
 
   const onSubmit = useCallback(() => {
     const text = input.trim();
