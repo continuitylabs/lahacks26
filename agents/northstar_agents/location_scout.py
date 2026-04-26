@@ -1,9 +1,13 @@
 """Agent A — Location Scout.
 
-Tool execution: queries OpenStreetMap (Overpass) for the closest ranger
-station, hospital, helipad, and trailhead near the incident GPS, and
-Open-Meteo for current weather. Reasons about extraction feasibility from
-the combined POI + weather picture, and replies to the rescue coordinator.
+Queries OpenStreetMap (Overpass) for the closest ranger station, hospital,
+helipad, and trailhead near the incident GPS. Asks Claude to compose a 2-3
+sentence paragraph summarizing the rescue assets and recommended extraction
+for inclusion in the dispatcher script. Falls back to a deterministic
+template paragraph when Claude is unavailable.
+
+Weather lookup is owned by the Weather Analyst now; this agent only handles
+location data.
 """
 from __future__ import annotations
 
@@ -16,36 +20,23 @@ from .schemas import (
     LocationScoutRequest,
     LocationScoutResponse,
     POI,
-    WeatherSnapshot,
 )
-from .tools import overpass, weather
+from .tools import claude, overpass
 
 
-# `endpoint=` and `mailbox=True` are mutually exclusive in uAgents — passing
-# both silently disables mailbox. Pick exactly one based on whether we have
-# an Agentverse API key.
-_use_mailbox = bool(config.AGENTVERSE_API_KEY)
 _agent_kwargs: dict = {
     "name": "northstar_location_scout",
     "seed": config.LOCATION_SCOUT_SEED,
     "port": config.LOCATION_SCOUT_PORT,
+    "endpoint": [f"http://127.0.0.1:{config.LOCATION_SCOUT_PORT}/submit"],
 }
-if _use_mailbox:
-    _agent_kwargs["mailbox"] = True
-else:
-    _agent_kwargs["endpoint"] = [
-        f"http://127.0.0.1:{config.LOCATION_SCOUT_PORT}/submit"
-    ]
 agent = Agent(**_agent_kwargs)
 
 
 def _extraction_recommendation(
-    helipad: Optional[POI],
-    trailhead: Optional[POI],
-    wx: Optional[WeatherSnapshot],
+    helipad: Optional[POI], trailhead: Optional[POI]
 ) -> str:
-    helo_ok = wx is None or wx.helo_flyable is None or wx.helo_flyable
-    if helipad and helo_ok:
+    if helipad:
         return (
             f"Helicopter extraction preferred — landing zone {helipad.distance_km} km "
             f"{helipad.bearing} ({helipad.name})."
@@ -55,11 +46,6 @@ def _extraction_recommendation(
             f"Ground extraction via {trailhead.name}, {trailhead.distance_km} km "
             f"{trailhead.bearing}."
         )
-    if helipad and not helo_ok:
-        return (
-            f"Helicopter LZ identified ({helipad.name}, {helipad.distance_km} km "
-            f"{helipad.bearing}) but weather is marginal — ground SAR recommended."
-        )
     return "No obvious extraction asset within search radius — escalate to local SAR."
 
 
@@ -68,7 +54,6 @@ def _summary(
     hospital: Optional[POI],
     helipad: Optional[POI],
     trailhead: Optional[POI],
-    wx: Optional[WeatherSnapshot],
 ) -> str:
     parts: list[str] = []
     if ranger:
@@ -79,11 +64,40 @@ def _summary(
         parts.append(f"Helipad: {helipad.name} ({helipad.distance_km} km {helipad.bearing})")
     if trailhead:
         parts.append(f"Trailhead: {trailhead.name} ({trailhead.distance_km} km {trailhead.bearing})")
-    if wx and wx.summary:
-        parts.append(f"Weather: {wx.summary}")
     if not parts:
         return "No POIs found within search radius."
     return " | ".join(parts)
+
+
+def _template_paragraph(
+    ranger: Optional[POI],
+    hospital: Optional[POI],
+    helipad: Optional[POI],
+    trailhead: Optional[POI],
+    extraction: str,
+) -> str:
+    bits: list[str] = []
+    if ranger:
+        bits.append(
+            f"The nearest ranger station, {ranger.name}, is "
+            f"{ranger.distance_km:.1f} kilometers {ranger.bearing}"
+            + (f", phone {ranger.phone}" if ranger.phone else "")
+            + "."
+        )
+    if hospital:
+        bits.append(
+            f"The closest hospital is {hospital.name}, "
+            f"{hospital.distance_km:.1f} kilometers {hospital.bearing}."
+        )
+    if helipad:
+        bits.append(
+            f"A helicopter landing zone is available {helipad.distance_km:.1f} "
+            f"kilometers {helipad.bearing}."
+        )
+    bits.append(extraction)
+    if not bits:
+        return "Limited rescue assets available within search radius. Recommend escalating to local search-and-rescue dispatch."
+    return " ".join(bits)
 
 
 @agent.on_message(model=LocationScoutRequest, replies=LocationScoutResponse)
@@ -93,25 +107,29 @@ async def handle(ctx: Context, sender: str, msg: LocationScoutRequest) -> None:
         f"r={msg.search_radius_km}km"
     )
     pois = await overpass.find_pois(msg.latitude, msg.longitude, msg.search_radius_km)
-    wx = await weather.fetch_weather(msg.latitude, msg.longitude)
+    ranger = pois.get("ranger_station")
+    hospital = pois.get("hospital")
+    helipad = pois.get("helipad")
+    trailhead = pois.get("trailhead")
+
+    extraction = _extraction_recommendation(helipad, trailhead)
+    summary = _summary(ranger, hospital, helipad, trailhead)
+
+    paragraph = await claude.compose_location_paragraph(
+        ranger, hospital, helipad, trailhead, extraction
+    )
+    if not paragraph:
+        paragraph = _template_paragraph(ranger, hospital, helipad, trailhead, extraction)
 
     response = LocationScoutResponse(
         request_id=msg.request_id,
-        nearest_ranger_station=pois.get("ranger_station"),
-        nearest_hospital=pois.get("hospital"),
-        nearest_helipad=pois.get("helipad"),
-        nearest_trailhead=pois.get("trailhead"),
-        weather=wx,
-        extraction_recommendation=_extraction_recommendation(
-            pois.get("helipad"), pois.get("trailhead"), wx
-        ),
-        summary=_summary(
-            pois.get("ranger_station"),
-            pois.get("hospital"),
-            pois.get("helipad"),
-            pois.get("trailhead"),
-            wx,
-        ),
+        nearest_ranger_station=ranger,
+        nearest_hospital=hospital,
+        nearest_helipad=helipad,
+        nearest_trailhead=trailhead,
+        extraction_recommendation=extraction,
+        summary=summary,
+        script_paragraph=paragraph,
     )
     await ctx.send(sender, response)
     ctx.logger.info(f"[Scout] req={msg.request_id} → replied")
