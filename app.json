@@ -44,6 +44,13 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Northstar listens to your voice so you can ask the on-device guide hands-free.",
+          "speechRecognitionPermission": "Northstar transcribes your voice on-device so the guide can answer you."
+        }
       ]
     ],
     "experiments": {
