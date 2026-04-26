@@ -33,11 +33,14 @@ RESCUE_COORDINATOR_SEED = get(
 LOCATION_SCOUT_SEED = get(
     "LOCATION_SCOUT_SEED", "northstar-location-scout-seed-CHANGE-ME"
 )
-MEDICAL_COORDINATOR_SEED = get(
-    "MEDICAL_COORDINATOR_SEED", "northstar-medical-coordinator-seed-CHANGE-ME"
+WEATHER_ANALYST_SEED = get(
+    "WEATHER_ANALYST_SEED", "northstar-weather-analyst-seed-CHANGE-ME"
 )
-CONTACT_ORCHESTRATOR_SEED = get(
-    "CONTACT_ORCHESTRATOR_SEED", "northstar-contact-orchestrator-seed-CHANGE-ME"
+SCRIPT_COMPOSER_SEED = get(
+    "SCRIPT_COMPOSER_SEED", "northstar-script-composer-seed-CHANGE-ME"
+)
+NEXT_STEPS_PLANNER_SEED = get(
+    "NEXT_STEPS_PLANNER_SEED", "northstar-next-steps-planner-seed-CHANGE-ME"
 )
 PHONE_AGENT_SEED = get(
     "PHONE_AGENT_SEED", "northstar-phone-agent-seed-CHANGE-ME"
@@ -47,9 +50,10 @@ PHONE_AGENT_SEED = get(
 # Local Bureau ports
 RESCUE_COORDINATOR_PORT = int(get("RESCUE_COORDINATOR_PORT", "8000") or "8000")
 LOCATION_SCOUT_PORT = int(get("LOCATION_SCOUT_PORT", "8001") or "8001")
-MEDICAL_COORDINATOR_PORT = int(get("MEDICAL_COORDINATOR_PORT", "8002") or "8002")
-CONTACT_ORCHESTRATOR_PORT = int(get("CONTACT_ORCHESTRATOR_PORT", "8003") or "8003")
+WEATHER_ANALYST_PORT = int(get("WEATHER_ANALYST_PORT", "8002") or "8002")
+SCRIPT_COMPOSER_PORT = int(get("SCRIPT_COMPOSER_PORT", "8003") or "8003")
 PHONE_AGENT_PORT = int(get("PHONE_AGENT_PORT", "8004") or "8004")
+NEXT_STEPS_PLANNER_PORT = int(get("NEXT_STEPS_PLANNER_PORT", "8005") or "8005")
 
 
 # Anthropic
@@ -87,8 +91,9 @@ _addresses: dict[str, str] = {}
 _SEED_BY_ROLE: dict[str, str | None] = {
     "rescue_coordinator": RESCUE_COORDINATOR_SEED,
     "location_scout": LOCATION_SCOUT_SEED,
-    "medical_coordinator": MEDICAL_COORDINATOR_SEED,
-    "contact_orchestrator": CONTACT_ORCHESTRATOR_SEED,
+    "weather_analyst": WEATHER_ANALYST_SEED,
+    "script_composer": SCRIPT_COMPOSER_SEED,
+    "next_steps_planner": NEXT_STEPS_PLANNER_SEED,
     "phone_agent": PHONE_AGENT_SEED,
 }
 

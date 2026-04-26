@@ -6,3 +6,4 @@ pydantic>=2.6.0
 python-dotenv>=1.0.0
 twilio>=9.3.0
 elevenlabs>=1.10.0
+PyYAML>=6.0
