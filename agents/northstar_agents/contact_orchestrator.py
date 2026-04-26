@@ -7,6 +7,8 @@ coordinator can present them to the user before any real call goes out.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from uagents import Agent, Context
 
 from . import config
@@ -85,13 +87,21 @@ async def handle(ctx: Context, sender: str, msg: ContactOrchestratorRequest) -> 
     # 3. Place call only when the user explicitly asked for it.
     call_sid = None
     if msg.place_call:
-        call_sid = await twilio.place_call(script)
+        # When PUBLIC_BASE_URL is set, point Twilio at the synthesized MP3 so
+        # the dispatcher hears the ElevenLabs voice via <Play>; otherwise the
+        # tool falls back to <Say> with the same script text.
+        audio_url = None
+        if audio_path and config.PUBLIC_BASE_URL:
+            audio_url = (
+                f"{config.PUBLIC_BASE_URL.rstrip('/')}/audio/{Path(audio_path).name}"
+            )
+        call_sid, call_error = await twilio.place_call(script, audio_url=audio_url)
         if call_sid:
             status = "called"
             notes.append(f"call placed via Twilio (SID {call_sid})")
         else:
             status = "failed"
-            notes.append("Twilio not configured or call failed")
+            notes.append(call_error or "Twilio not configured or call failed")
     else:
         notes.append("call not placed — awaiting user confirmation")
 

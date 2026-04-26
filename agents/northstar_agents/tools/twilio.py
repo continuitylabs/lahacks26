@@ -14,35 +14,55 @@ from typing import Optional
 from .. import config
 
 
-def _place_call_sync(script_text: str) -> Optional[str]:
+def _place_call_sync(
+    script_text: str,
+    to_number: Optional[str] = None,
+    audio_url: Optional[str] = None,
+) -> tuple[Optional[str], Optional[str]]:
     from twilio.rest import Client
 
     if not (
         config.TWILIO_ACCOUNT_SID
         and config.TWILIO_AUTH_TOKEN
         and config.TWILIO_FROM_NUMBER
-        and config.TWILIO_TO_NUMBER
+        and (to_number or config.TWILIO_TO_NUMBER or config.CALL_TARGET_NUMBER)
     ):
-        return None
+        return None, "Twilio credentials or destination number are missing."
 
     client = Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
-    twiml = (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        '<Response><Say voice="Polly.Joanna-Neural">'
-        f"{saxutils.escape(script_text)}"
-        "</Say></Response>"
-    )
+    if audio_url:
+        twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            f"<Response><Play>{saxutils.escape(audio_url)}</Play></Response>"
+        )
+    else:
+        twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Response><Say voice="Polly.Joanna-Neural">'
+            f"{saxutils.escape(script_text)}"
+            "</Say></Response>"
+        )
+
     call = client.calls.create(
-        to=config.TWILIO_TO_NUMBER,
+        to=to_number or config.TWILIO_TO_NUMBER or config.CALL_TARGET_NUMBER,
         from_=config.TWILIO_FROM_NUMBER,
         twiml=twiml,
     )
-    return call.sid
+    return call.sid, None
 
 
-async def place_call(script_text: str) -> Optional[str]:
-    """Place an outbound call and return the Twilio call SID, or None."""
+async def place_call(
+    script_text: str,
+    to_number: Optional[str] = None,
+    audio_url: Optional[str] = None,
+) -> tuple[Optional[str], Optional[str]]:
+    """Place an outbound call and return the Twilio call SID plus any error."""
     try:
-        return await asyncio.to_thread(_place_call_sync, script_text)
-    except Exception:
-        return None
+        return await asyncio.to_thread(
+            _place_call_sync,
+            script_text,
+            to_number,
+            audio_url,
+        )
+    except Exception as exc:
+        return None, str(exc)
