@@ -13,7 +13,7 @@ export type UseFallDetectorOptions = {
   onFall: () => void;
   /** g-units. Default 2.5. */
   thresholdG?: number;
-  /** Default 30000. */
+  /** Default 5000. */
   cooldownMs?: number;
   /** Accelerometer sample interval in ms. Default 50 (20 Hz). */
   updateIntervalMs?: number;
@@ -30,7 +30,7 @@ export type FallDetectorHandle = {
 
 /**
  * Subscribes to the accelerometer at `updateIntervalMs` Hz and fires
- * `onFall` when |a| exceeds `thresholdG`. A 30 s default cooldown
+ * `onFall` when |a| exceeds `thresholdG`. A 5 s default cooldown
  * prevents back-to-back detections from a single event.
  */
 export function useFallDetector(
@@ -40,7 +40,7 @@ export function useFallDetector(
     paused,
     onFall,
     thresholdG = 2.5,
-    cooldownMs = 30_000,
+    cooldownMs = 5_000,
     updateIntervalMs = 50,
   } = options;
 

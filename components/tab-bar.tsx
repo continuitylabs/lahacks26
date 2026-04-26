@@ -5,11 +5,12 @@ import { Platform } from 'react-native';
 
 import { Pressable, Text, View } from '@/src/tw';
 
-type IconName = 'home' | 'chat' | 'profile' | 'info';
+type IconName = 'home' | 'chat' | 'yamnet' | 'profile' | 'info';
 
 const ICONS: Record<IconName, string> = {
   home: '✦',
   chat: '❯_',
+  yamnet: '≈',
   profile: '◐',
   info: 'ⓘ',
 };
@@ -17,6 +18,7 @@ const ICONS: Record<IconName, string> = {
 const LABELS: Record<IconName, string> = {
   home: 'Home',
   chat: 'Guide',
+  yamnet: 'YAMNet',
   profile: 'Profile',
   info: 'Info',
 };

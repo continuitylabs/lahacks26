@@ -13,6 +13,7 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
       <Tabs.Screen name="chat" options={{ title: 'Guide' }} />
+      <Tabs.Screen name="yamnet" options={{ title: 'YAMNet' }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
       <Tabs.Screen name="info" options={{ title: 'Info' }} />
     </Tabs>
