@@ -38,6 +38,14 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="triage-chat"
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
+            <Stack.Screen
               name="rescue"
               options={{
                 presentation: 'modal',
