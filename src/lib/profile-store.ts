@@ -102,6 +102,9 @@ export type IncidentAgentReportSlice = {
   markdown: string;
   timedOut: boolean;
   /** Optional structured pulls from the markdown (filled when parser succeeds). */
+  /** Short hex briefing key — used in the Q&A starter line we send to the
+   *  emergency contact so ASI:One conversations can load context. */
+  caseId: string | null;
   rescueScript: string | null;
   extractionRecommendation: string | null;
   agentSeverity: string | null;
@@ -223,6 +226,7 @@ function migrate(raw: unknown): ProfileState {
           agentReport: incident.agentReport
             ? {
                 ...incident.agentReport,
+                caseId: incident.agentReport.caseId ?? null,
                 locationSummary: incident.agentReport.locationSummary ?? null,
                 weatherSummary: incident.agentReport.weatherSummary ?? null,
                 weatherUrgencyModifier:

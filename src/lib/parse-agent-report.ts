@@ -11,6 +11,9 @@
 export type ParsedNextStepCard = { title: string; body: string };
 
 export type ParsedAgentReport = {
+  /** Short hex ID assigned by the rescue coordinator. Used as the briefing
+   *  key for emergency-contact Q&A on ASI:One. */
+  caseId: string | null;
   rescueScript: string | null;
   extractionRecommendation: string | null;
   agentSeverity: string | null;
@@ -23,6 +26,7 @@ export type ParsedAgentReport = {
 };
 
 const EMPTY: ParsedAgentReport = {
+  caseId: null,
   rescueScript: null,
   extractionRecommendation: null,
   agentSeverity: null,
@@ -51,6 +55,7 @@ function tryParseJsonBlock(markdown: string): Partial<ParsedAgentReport> | null 
   try {
     const obj = JSON.parse(last[1]) as Record<string, unknown>;
     return {
+      caseId: typeof obj.caseId === 'string' ? obj.caseId : null,
       rescueScript: typeof obj.rescueScript === 'string' ? obj.rescueScript : null,
       extractionRecommendation:
         typeof obj.extractionRecommendation === 'string' ? obj.extractionRecommendation : null,

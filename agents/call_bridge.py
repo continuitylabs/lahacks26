@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,6 +13,19 @@ from urllib.parse import urlparse
 
 from northstar_agents import config
 from northstar_agents.tools import elevenlabs, twilio
+
+
+def _coordinator_chat_url() -> str | None:
+    """Public chat URL for the Rescue Coordinator on Agentverse / ASI:One.
+
+    Only returned when the coordinator is actually reachable from outside the
+    local box, i.e. mailbox mode is on and an Agentverse API key is configured
+    (matches the gating in rescue_coordinator.py and run_all.py --mailbox).
+    """
+    use_mailbox = os.environ.get("NORTHSTAR_USE_MAILBOX", "").lower() in {"1", "true", "yes"}
+    if not (use_mailbox and config.AGENTVERSE_API_KEY):
+        return None
+    return f"https://agentverse.ai/agents/details/{config.address('rescue_coordinator')}/profile"
 
 
 OUT_DIR = Path(__file__).resolve().parent / "out"
@@ -123,6 +137,23 @@ def build_whatsapp_message(patient_data: dict[str, Any]) -> str:
         lines.extend(str(line) for line in summary_lines)
     else:
         lines.extend(["", "Summary", "missing"])
+
+    chat_url = _coordinator_chat_url()
+    if chat_url:
+        case_id = patient_data.get("caseId")
+        case_id = str(case_id).strip() if case_id else ""
+        lines.extend([
+            "",
+            "Talk to the rescue coordinator agent",
+            chat_url,
+        ])
+        if case_id:
+            patient_label = patient_name if patient_name != "missing" else "the patient"
+            lines.extend([
+                "",
+                "Paste this as your first message to load the briefing:",
+                f"Status update on {patient_label} (case {case_id})",
+            ])
 
     return "\n".join(lines)
 

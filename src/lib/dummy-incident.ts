@@ -55,6 +55,7 @@ export function dummyAgentReport(): IncidentAgentReportSlice {
   return {
     markdown: '',
     timedOut: true,
+    caseId: null,
     rescueScript: null,
     extractionRecommendation: null,
     agentSeverity: null,

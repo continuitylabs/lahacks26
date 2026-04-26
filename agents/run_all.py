@@ -24,6 +24,14 @@ from pathlib import Path
 
 from uagents import Bureau
 
+# `rescue_coordinator` reads NORTHSTAR_USE_MAILBOX at module-import time to
+# decide between mailbox= and endpoint= on its Agent(). argparse runs in
+# main() — too late. Prime the env var from sys.argv BEFORE importing the
+# agents package so --mailbox actually takes effect in --local (Bureau)
+# mode. The flag is still validated by argparse below.
+if "--mailbox" in sys.argv:
+    os.environ["NORTHSTAR_USE_MAILBOX"] = "1"
+
 import call_bridge
 from northstar_agents import (
     config,

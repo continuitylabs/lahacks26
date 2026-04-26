@@ -118,7 +118,7 @@ class WeatherAnalystResponse(Model):
     summary: str
 
 
-# ── Script Composer (Agent C, replaces ContactOrchestrator) ─────────────────
+# ── Script Composer (Agent C) ───────────────────────────────────────────────
 
 
 class ScriptComposerRequest(Model):

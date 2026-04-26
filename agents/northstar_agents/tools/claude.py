@@ -1,11 +1,12 @@
 """Anthropic Claude wrappers used by Northstar agents.
 
-Five call sites:
+Six call sites:
 - parse_incident: turn a free-form chat message into structured fields
 - compose_location_paragraph: location/SAR paragraph for the dispatcher
 - analyze_weather_urgency: weather + injury → urgency modifier + paragraph
 - compose_optimized_script: integrates all inputs into the final script
 - plan_next_steps: structured cards for the post-call Instructions screen
+- answer_about_briefing: Q&A turn for an emergency contact reading the briefing
 
 Every call is best-effort — agents fall back to heuristics when no key is set
 or when the API fails, so the demo still runs offline.
@@ -343,4 +344,54 @@ async def plan_next_steps(
             return None
         return parsed.header, cards
     except (anthropic.APIError, ValueError):
+        return None
+
+
+# ── answer_about_briefing ───────────────────────────────────────────────────
+
+_BRIEFING_QA_SYSTEM = """You are the Northstar Rescue Coordinator, on a chat \
+session with the patient's emergency contact. They are reading a briefing \
+about a wilderness medical incident and asking follow-up questions.
+
+The patient briefing below is your ONLY source of truth. It reflects the \
+moment of the incident report — you do NOT have live updates, current vitals, \
+or rescue-arrival status. If asked about anything live or anything not in \
+the briefing, say so plainly.
+
+Style:
+- Concise, factual, calm. 1-3 sentences for most answers.
+- Quote concrete numbers from the briefing when relevant (vitals, GPS, \
+distances).
+- No greetings, no sign-offs, no emojis. Markdown bold/italics ok if helpful.
+- If the user seems to be in distress or asks "what should I do", point them \
+to the Next Steps section of the briefing and remind them dispatch has the \
+location."""
+
+
+async def answer_about_briefing(
+    briefing_markdown: str,
+    question: str,
+) -> Optional[str]:
+    client = _get_client()
+    if client is None:
+        return None
+    body = (
+        "PATIENT BRIEFING (source of truth):\n\n"
+        f"{briefing_markdown}\n\n"
+        "---\n\n"
+        f"Emergency contact's question: {question}"
+    )
+    try:
+        msg = await client.messages.create(
+            model=config.CLAUDE_MODEL,
+            max_tokens=512,
+            thinking={"type": "adaptive"},
+            system=_BRIEFING_QA_SYSTEM,
+            messages=[{"role": "user", "content": body}],
+        )
+        for block in msg.content:
+            if getattr(block, "type", None) == "text":
+                return block.text  # type: ignore[attr-defined]
+        return None
+    except anthropic.APIError:
         return None

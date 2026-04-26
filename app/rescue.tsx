@@ -140,6 +140,7 @@ export default function Rescue() {
           agentReport: {
             markdown: result.markdown,
             timedOut: result.timedOut,
+            caseId: parsed.caseId,
             rescueScript: parsed.rescueScript,
             extractionRecommendation: parsed.extractionRecommendation,
             agentSeverity: parsed.agentSeverity,
@@ -161,6 +162,7 @@ export default function Rescue() {
           agentReport: {
             markdown: '',
             timedOut: true,
+            caseId: null,
             rescueScript: null,
             extractionRecommendation: null,
             agentSeverity: null,
@@ -193,6 +195,7 @@ export default function Rescue() {
       agentReport: {
         markdown: '',
         timedOut: true,
+        caseId: null,
         rescueScript: null,
         extractionRecommendation: null,
         agentSeverity: null,

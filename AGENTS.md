@@ -221,15 +221,20 @@ Type families:
 
 ## The agent network (`agents/`)
 
-The Fetch.ai contribution is a Python package under `agents/`. Four uAgents
-in one Bureau (locally) or four agents on Agentverse (production):
+The Fetch.ai contribution is a Python package under `agents/`. Six uAgents
+spawned by `run_all.py` (`run_one.py` per subprocess in the default mode,
+or one shared Bureau when `--local` is passed). Only the Rescue Coordinator
+runs in mailbox mode — it's the public ASI:One entrypoint. The rest use
+localhost endpoints:
 
 | Agent | File | Role |
 |---|---|---|
 | Rescue Coordinator | `agents/northstar_agents/rescue_coordinator.py` | Chat-Protocol entry. Parses incident → fans out → composes final markdown reply. |
-| Location Scout | `agents/northstar_agents/location_scout.py` | OSM Overpass + Open-Meteo → POI + weather + extraction recommendation. |
-| Medical Coordinator | `agents/northstar_agents/medical_coordinator.py` | Claude (or heuristic) → severity + actions + monitoring. |
-| Contact Orchestrator | `agents/northstar_agents/contact_orchestrator.py` | Claude → script. ElevenLabs → voice. Twilio → call (only if user said `call now`). |
+| Location Scout | `agents/northstar_agents/location_scout.py` | OSM Overpass + Open-Meteo → POI + extraction recommendation. |
+| Weather Analyst | `agents/northstar_agents/weather_analyst.py` | Open-Meteo + Claude → conditions paragraph + urgency modifier. |
+| Script Composer | `agents/northstar_agents/script_composer.py` | Claude → dispatcher script. ElevenLabs → voice. Twilio → call (only if user said `call now`). |
+| Next Steps Planner | `agents/northstar_agents/next_steps_planner.py` | Claude (or heuristic) → severity + actions + monitoring cards. |
+| Phone Agent | `agents/northstar_agents/phone_agent.py` | On-device proxy. REST `/report` from the Expo app → Chat Protocol → Coordinator → markdown back to the app. |
 
 Inter-agent messages are uAgents `Model` classes in
 `agents/northstar_agents/schemas.py`. Real tools live under `tools/`.

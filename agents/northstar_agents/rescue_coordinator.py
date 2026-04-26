@@ -111,6 +111,36 @@ PENDING: dict[str, _Pending] = {}
 # safety margin.
 _SETTLE_TIMEOUT_S = 20.0
 
+
+# ── Briefing store (for emergency-contact Q&A via ASI:One) ──────────────────
+# After each rescue plan is built, we stash the briefing under a short case
+# ID. When an emergency contact opens the Coordinator's chat (via the URL
+# embedded in the WhatsApp/SMS) and pastes the starter line "...case <id>",
+# we load that briefing and answer their follow-up questions from it.
+#
+# In-process state — wiped on Coordinator restart. That's fine: the SMS
+# already carries the full incident summary; the Q&A flow is a convenience.
+
+class _Briefing:
+    __slots__ = ("case_id", "patient_name", "markdown", "incident", "created_at")
+
+    def __init__(self, case_id: str, patient_name: str, markdown: str, incident: IncidentBrief):
+        self.case_id = case_id
+        self.patient_name = patient_name
+        self.markdown = markdown
+        self.incident = incident
+        self.created_at = datetime.now(timezone.utc)
+
+
+BRIEFINGS: dict[str, _Briefing] = {}            # case_id → briefing
+ACTIVE_BY_SENDER: dict[str, str] = {}           # ASI:One sender address → case_id
+
+_CASE_ID_RE = re.compile(r"\bcase\s+([0-9a-f]{6})\b", re.IGNORECASE)
+
+
+def _make_case_id(request_id: str) -> str:
+    return request_id.replace("-", "")[:6].lower()
+
 def _console_debug(event: str, details: dict[str, object]) -> None:
     print(f"[Coordinator] {event} {details}", flush=True)
 
@@ -405,7 +435,7 @@ def _format_markdown(state: _Pending) -> str:
     return "\n".join(lines)
 
 
-def _build_json_tail(state: _Pending) -> str:
+def _build_json_tail(state: _Pending, case_id: str) -> str:
     loc = state.location
     wx = state.weather
     script = state.script
@@ -422,6 +452,7 @@ def _build_json_tail(state: _Pending) -> str:
         degraded.append("next_steps_planner")
 
     payload: dict[str, Any] = {
+        "caseId": case_id,
         "rescueScript": script.rescue_script if script else None,
         "extractionRecommendation": loc.extraction_recommendation if loc else None,
         "agentSeverity": state.incident.severity_hint,
@@ -439,7 +470,21 @@ async def _send_final_reply(ctx: Context, request_id: str) -> None:
     state = PENDING.pop(request_id, None)
     if state is None:
         return
-    body = _format_markdown(state) + "\n\n" + _build_json_tail(state)
+    case_id = _make_case_id(request_id)
+    markdown_body = _format_markdown(state)
+    body = markdown_body + "\n\n" + _build_json_tail(state, case_id)
+
+    BRIEFINGS[case_id] = _Briefing(
+        case_id=case_id,
+        patient_name=(state.incident.user_name or "Patient"),
+        markdown=markdown_body,
+        incident=state.incident,
+    )
+    ctx.logger.info(
+        f"[Coordinator] briefing stored case={case_id} "
+        f"patient={state.incident.user_name or 'Patient'!r}"
+    )
+
     await ctx.send(
         state.sender,
         ChatMessage(
@@ -452,6 +497,18 @@ async def _send_final_reply(ctx: Context, request_id: str) -> None:
         ),
     )
     ctx.logger.info(f"[Coordinator] final reply sent → {state.sender[:24]}…")
+
+
+async def _send_qa_reply(ctx: Context, sender: str, text: str) -> None:
+    """Reply to an emergency-contact Q&A turn. Keeps the chat session open."""
+    await ctx.send(
+        sender,
+        ChatMessage(
+            timestamp=datetime.now(timezone.utc),
+            msg_id=uuid4(),
+            content=[TextContent(type="text", text=text)],
+        ),
+    )
 
 
 # ── Chat protocol handlers ──────────────────────────────────────────────────
@@ -473,6 +530,61 @@ async def on_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
     text = "\n".join(text_parts).strip()
     if not text:
         return
+
+    # ── Emergency-contact Q&A path ──────────────────────────────────────────
+    # If the incoming message references a known case ID, OR the sender already
+    # has an active briefing loaded and isn't reporting a new incident, route
+    # to the Q&A flow instead of running the full pipeline.
+    has_yaml_block = "```yaml" in text
+    case_match = _CASE_ID_RE.search(text)
+
+    if case_match and not has_yaml_block:
+        case_id = case_match.group(1).lower()
+        briefing = BRIEFINGS.get(case_id)
+        if briefing is None:
+            await _send_qa_reply(
+                ctx,
+                sender,
+                f"I don't have case `{case_id}` loaded — the coordinator may have "
+                "restarted since the alert was sent. Please paste the original "
+                "incident details here and I'll work from those.",
+            )
+            ctx.logger.info(f"[Coordinator] case={case_id} miss for {sender[:24]}…")
+            return
+        ACTIVE_BY_SENDER[sender] = case_id
+        ctx.logger.info(
+            f"[Coordinator] case={case_id} loaded for {sender[:24]}… "
+            f"(patient={briefing.patient_name!r})"
+        )
+        intro = (
+            f"Loaded the briefing for **{briefing.patient_name}** (case `{case_id}`). "
+            "This reflects the incident at the moment it was reported — I don't "
+            "have live updates. Ask me anything about vitals, location, weather, "
+            "next steps, or what dispatch was told.\n\n---\n\n"
+        )
+        await _send_qa_reply(ctx, sender, intro + briefing.markdown)
+        return
+
+    if sender in ACTIVE_BY_SENDER and not has_yaml_block:
+        case_id = ACTIVE_BY_SENDER[sender]
+        briefing = BRIEFINGS.get(case_id)
+        if briefing is not None:
+            from .tools import claude as _claude  # local import to avoid cycles
+            answer = await _claude.answer_about_briefing(briefing.markdown, text)
+            if not answer:
+                answer = (
+                    "I couldn't reach my reasoning model just now. The briefing "
+                    "above has the full incident details — please skim that for "
+                    "what you need."
+                )
+            ctx.logger.info(
+                f"[Coordinator] Q&A turn case={case_id} sender={sender[:24]}… "
+                f"q_chars={len(text)} a_chars={len(answer)}"
+            )
+            await _send_qa_reply(ctx, sender, answer)
+            return
+        # Briefing was evicted — fall through to the new-incident path.
+        ACTIVE_BY_SENDER.pop(sender, None)
 
     place_call = "call now" in text.lower() or "place the call" in text.lower()
     _console_debug(

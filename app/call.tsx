@@ -88,6 +88,7 @@ export default function Call() {
     return {
       collectedAt: new Date().toISOString(),
       contactTarget: state.profile.emergencyContact.phone.trim() || '',
+      caseId: incident?.agentReport?.caseId ?? undefined,
       rescueScript: incident?.agentReport?.rescueScript ?? undefined,
       patient: {
         name: state.profile.userName.trim() || 'Unknown hiker',
