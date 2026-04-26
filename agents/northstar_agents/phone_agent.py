@@ -48,10 +48,16 @@ class ReportRequest(Model):
     """
 
     user_name: str
+    age: Optional[int] = None
     latitude: float
     longitude: float
     condition_summary: str
+    medical_notes: Optional[str] = None
     heart_rate_bpm: Optional[int] = None
+    spo2: Optional[int] = None
+    systolic: Optional[int] = None
+    diastolic: Optional[int] = None
+    vitals_confidence: Optional[float] = None
     emergency_contact: Optional[str] = None
     place_call: bool = False
 
@@ -107,22 +113,29 @@ def _build_chat_text(req: ReportRequest) -> str:
     The Rescue Coordinator's parser reads free-form text, so we format the
     structured device data into a prompt the parser can read cleanly.
     """
-    lat_dir = "N" if req.latitude >= 0 else "S"
-    lon_dir = "E" if req.longitude >= 0 else "W"
     parts: list[str] = []
-    parts.append(f"My name is {req.user_name}.")
-    parts.append(
-        f"My current GPS coordinates are "
-        f"{abs(req.latitude):.5f}°{lat_dir}, {abs(req.longitude):.5f}°{lon_dir}."
-    )
+    parts.append(f"Name: {req.user_name}")
+    if req.age is not None:
+        parts.append(f"Age: {req.age}")
+    parts.append(f"Coordinates: {req.latitude:.5f}, {req.longitude:.5f}")
     if req.heart_rate_bpm is not None:
-        parts.append(f"My heart rate is {req.heart_rate_bpm} bpm.")
-    parts.append(f"Condition: {req.condition_summary}")
+        parts.append(f"Heart rate: {req.heart_rate_bpm} bpm")
+    if req.spo2 is not None:
+        parts.append(f"SpO2: {req.spo2}%")
+    if req.systolic is not None or req.diastolic is not None:
+        sys = str(req.systolic) if req.systolic is not None else "unknown"
+        dia = str(req.diastolic) if req.diastolic is not None else "unknown"
+        parts.append(f"Blood pressure: {sys}/{dia} mmHg")
+    if req.vitals_confidence is not None:
+        parts.append(f"Vitals confidence: {round(req.vitals_confidence * 100)}%")
+    parts.append(f"Condition summary: {req.condition_summary}")
+    if req.medical_notes:
+        parts.append(f"Medical baseline: {req.medical_notes}")
     if req.emergency_contact:
-        parts.append(f"My emergency contact is {req.emergency_contact}.")
+        parts.append(f"Emergency contact: {req.emergency_contact}")
     if req.place_call:
         parts.append("Please call now.")
-    return " ".join(parts)
+    return "\n".join(parts)
 
 
 # ── REST handler ───────────────────────────────────────────────────────────

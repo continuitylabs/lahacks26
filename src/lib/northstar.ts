@@ -22,10 +22,16 @@ function baseUrl(): string {
 
 export type ReportPayload = {
   userName: string;
+  age?: number | null;
   latitude: number;
   longitude: number;
   conditionSummary: string;
+  medicalNotes?: string;
   heartRateBpm?: number;
+  spo2?: number;
+  systolic?: number;
+  diastolic?: number;
+  vitalsConfidence?: number;
   emergencyContact?: string;
   /** Authorize the agent network to actually place the Twilio call. */
   placeCall?: boolean;
@@ -46,10 +52,16 @@ export async function reportIncident(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       user_name: p.userName,
+      age: p.age,
       latitude: p.latitude,
       longitude: p.longitude,
       condition_summary: p.conditionSummary,
+      medical_notes: p.medicalNotes,
       heart_rate_bpm: p.heartRateBpm,
+      spo2: p.spo2,
+      systolic: p.systolic,
+      diastolic: p.diastolic,
+      vitals_confidence: p.vitalsConfidence,
       emergency_contact: p.emergencyContact,
       place_call: p.placeCall ?? false,
     }),

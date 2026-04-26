@@ -40,8 +40,11 @@ export function composeIncidentPayload(
         : FALLBACK_COORDS);
 
   // Same priority for vitals: prefer the active incident snapshot.
-  const heartRateBpm =
-    incident?.vitals?.heartRate ?? session.lastVitals?.heartRate;
+  const lastVitals = session.lastVitals;
+  const heartRateBpm = incident?.vitals?.heartRate ?? lastVitals?.heartRate;
+  const spo2 = incident?.vitals?.spo2 ?? lastVitals?.spo2;
+  const vitalsConfidence =
+    incident?.vitals?.confidence ?? lastVitals?.confidence;
 
   const baseSummary =
     incident?.triage?.summary?.trim() ||
@@ -62,10 +65,16 @@ export function composeIncidentPayload(
 
   return {
     userName,
+    age: profile.age,
     latitude: coords.latitude,
     longitude: coords.longitude,
     conditionSummary,
+    medicalNotes: notes || undefined,
     heartRateBpm,
+    spo2,
+    systolic: lastVitals?.systolic,
+    diastolic: lastVitals?.diastolic,
+    vitalsConfidence,
     emergencyContact,
     // Twilio dispatch is opt-in per the agent-side convention. The user
     // upgrades the call by replying `call now` in the Chat Protocol; the

@@ -7,6 +7,7 @@ coordinator can present them to the user before any real call goes out.
 """
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from uagents import Agent, Context
@@ -54,6 +55,48 @@ def _template_script(req: ContactOrchestratorRequest) -> str:
     )
 
 
+def _format_optional(value: object, suffix: str = "") -> str:
+    if value is None:
+        return "missing"
+    return f"{value}{suffix}"
+
+
+def _compose_whatsapp_message(req: ContactOrchestratorRequest) -> str:
+    bp = "missing"
+    if req.systolic is not None or req.diastolic is not None:
+        systolic = str(req.systolic) if req.systolic is not None else "unknown"
+        diastolic = str(req.diastolic) if req.diastolic is not None else "unknown"
+        bp = f"{systolic}/{diastolic} mmHg"
+
+    confidence = (
+        f"{round(req.vitals_confidence * 100)}%"
+        if req.vitals_confidence is not None
+        else "missing"
+    )
+
+    lines = [
+        "Northstar emergency alert",
+        f"Patient: {req.user_name}",
+        f"Age: {_format_optional(req.age)}",
+        f"Severity: {req.severity}",
+        f"Location summary: {req.location_summary or 'missing'}",
+        f"GPS: {req.latitude:.5f}, {req.longitude:.5f}",
+        f"Heart rate: {_format_optional(req.heart_rate_bpm, ' bpm')}",
+        f"SpO2: {_format_optional(req.spo2, '%')}",
+        f"Blood pressure: {bp}",
+        f"Vitals confidence: {confidence}",
+        f"Medical baseline: {req.medical_notes or 'missing'}",
+        f"Emergency contact: {req.emergency_contact or 'missing'}",
+        f"Medical summary: {req.medical_summary or 'missing'}",
+        f"Reported condition: {req.incident_description or 'missing'}",
+    ]
+
+    if req.extraction_point:
+        lines.append(f"Extraction: {req.extraction_point}")
+
+    return "\n".join(lines)
+
+
 @agent.on_message(model=ContactOrchestratorRequest, replies=ContactOrchestratorResponse)
 async def handle(ctx: Context, sender: str, msg: ContactOrchestratorRequest) -> None:
     ctx.logger.info(
@@ -86,6 +129,7 @@ async def handle(ctx: Context, sender: str, msg: ContactOrchestratorRequest) -> 
 
     # 3. Place call only when the user explicitly asked for it.
     call_sid = None
+    whatsapp_sid = None
     if msg.place_call:
         # When PUBLIC_BASE_URL is set, point Twilio at the synthesized MP3 so
         # the dispatcher hears the ElevenLabs voice via <Play>; otherwise the
@@ -95,13 +139,21 @@ async def handle(ctx: Context, sender: str, msg: ContactOrchestratorRequest) -> 
             audio_url = (
                 f"{config.PUBLIC_BASE_URL.rstrip('/')}/audio/{Path(audio_path).name}"
             )
-        call_sid, call_error = await twilio.place_call(script, audio_url=audio_url)
+        whatsapp_body = _compose_whatsapp_message(msg)
+        (call_sid, call_error), (whatsapp_sid, whatsapp_error) = await asyncio.gather(
+            twilio.place_call(script, audio_url=audio_url),
+            twilio.send_whatsapp_message(whatsapp_body),
+        )
         if call_sid:
             status = "called"
             notes.append(f"call placed via Twilio (SID {call_sid})")
         else:
             status = "failed"
             notes.append(call_error or "Twilio not configured or call failed")
+        if whatsapp_sid:
+            notes.append(f"WhatsApp alert sent via Twilio (SID {whatsapp_sid})")
+        else:
+            notes.append(whatsapp_error or "WhatsApp message not configured or failed")
     else:
         notes.append("call not placed — awaiting user confirmation")
 
@@ -110,6 +162,7 @@ async def handle(ctx: Context, sender: str, msg: ContactOrchestratorRequest) -> 
         rescue_script=script,
         voice_audio_path=audio_path,
         call_sid=call_sid,
+        whatsapp_sid=whatsapp_sid,
         status=status,  # type: ignore[arg-type]
         notes=" | ".join(notes) if notes else None,
     )

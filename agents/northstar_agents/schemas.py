@@ -41,12 +41,20 @@ class WeatherSnapshot(Model):
 
 class IncidentBrief(Model):
     user_name: Optional[str] = None
+    age: Optional[int] = None
     latitude: float
     longitude: float
     location_description: str
     injury_description: str
     triage_findings: list[str]
     severity_hints: Optional[str] = None
+    medical_notes: Optional[str] = None
+    heart_rate_bpm: Optional[int] = None
+    spo2: Optional[int] = None
+    systolic: Optional[int] = None
+    diastolic: Optional[int] = None
+    vitals_confidence: Optional[float] = None
+    emergency_contact: Optional[str] = None
 
 
 # ── Location Scout (Agent A) ────────────────────────────────────────────────
@@ -96,12 +104,21 @@ class MedicalCoordinatorResponse(Model):
 class ContactOrchestratorRequest(Model):
     request_id: str
     user_name: str
+    age: Optional[int] = None
     location_summary: str
     medical_summary: str
+    incident_description: str
     severity: Severity
     extraction_point: Optional[str] = None
     latitude: float
     longitude: float
+    medical_notes: Optional[str] = None
+    heart_rate_bpm: Optional[int] = None
+    spo2: Optional[int] = None
+    systolic: Optional[int] = None
+    diastolic: Optional[int] = None
+    vitals_confidence: Optional[float] = None
+    emergency_contact: Optional[str] = None
     place_call: bool = False
 
 
@@ -110,5 +127,6 @@ class ContactOrchestratorResponse(Model):
     rescue_script: str
     voice_audio_path: Optional[str] = None  # local path / URL if synthesized
     call_sid: Optional[str] = None
+    whatsapp_sid: Optional[str] = None
     status: Literal["drafted", "voiced", "called", "failed"]
     notes: Optional[str] = None

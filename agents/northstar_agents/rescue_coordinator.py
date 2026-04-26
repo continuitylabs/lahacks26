@@ -97,9 +97,49 @@ _LATLON_RE = re.compile(
     r"(?P<lat>-?\d{1,2}(?:\.\d+)?)\s*[°,]?\s*[NSns]?[,\s]+"
     r"(?P<lon>-?\d{1,3}(?:\.\d+)?)\s*[°]?\s*[EWew]?",
 )
+_FIELD_PREFIXES: dict[str, str] = {
+    "name": "user_name",
+    "age": "age",
+    "coordinates": "coordinates",
+    "condition summary": "condition_summary",
+    "medical baseline": "medical_notes",
+    "emergency contact": "emergency_contact",
+    "heart rate": "heart_rate_bpm",
+    "spo2": "spo2",
+    "blood pressure": "blood_pressure",
+    "vitals confidence": "vitals_confidence",
+}
+
+
+def _extract_prefixed_fields(text: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        normalized = _FIELD_PREFIXES.get(key.strip().lower())
+        if normalized and value.strip():
+            fields[normalized] = value.strip()
+    return fields
+
+
+def _extract_int_prefix(value: Optional[str]) -> Optional[int]:
+    if not value:
+        return None
+    m = re.search(r"-?\d+", value)
+    return int(m.group(0)) if m else None
+
+
+def _extract_float_prefix(value: Optional[str]) -> Optional[float]:
+    if not value:
+        return None
+    m = re.search(r"-?\d+(?:\.\d+)?", value)
+    return float(m.group(0)) if m else None
 
 
 def _regex_parse(text: str) -> IncidentBrief:
+    fields = _extract_prefixed_fields(text)
     m = _LATLON_RE.search(text)
     if m:
         lat = float(m.group("lat"))
@@ -123,20 +163,50 @@ def _regex_parse(text: str) -> IncidentBrief:
             findings.append(keyword)
 
     return IncidentBrief(
-        user_name=None,
+        user_name=fields.get("user_name"),
+        age=_extract_int_prefix(fields.get("age")),
         latitude=lat,
         longitude=lon,
         location_description=text[:200],
         injury_description=text[:500],
         triage_findings=findings,
+        medical_notes=fields.get("medical_notes"),
+        heart_rate_bpm=_extract_int_prefix(fields.get("heart_rate_bpm")),
+        spo2=_extract_int_prefix(fields.get("spo2")),
+        systolic=_extract_int_prefix(fields.get("blood_pressure")),
+        diastolic=(
+            _extract_int_prefix(fields.get("blood_pressure").split("/", 1)[1])
+            if fields.get("blood_pressure") and "/" in fields["blood_pressure"]
+            else None
+        ),
+        vitals_confidence=(
+            (_extract_float_prefix(fields.get("vitals_confidence")) or 0.0) / 100.0
+            if fields.get("vitals_confidence")
+            else None
+        ),
+        emergency_contact=fields.get("emergency_contact"),
     )
 
 
 async def _parse(text: str) -> IncidentBrief:
+    regex_parsed = _regex_parse(text)
     parsed = await claude.parse_incident(text)
     if parsed is not None:
+        parsed.user_name = parsed.user_name or regex_parsed.user_name
+        parsed.age = parsed.age or regex_parsed.age
+        parsed.medical_notes = parsed.medical_notes or regex_parsed.medical_notes
+        parsed.heart_rate_bpm = parsed.heart_rate_bpm or regex_parsed.heart_rate_bpm
+        parsed.spo2 = parsed.spo2 or regex_parsed.spo2
+        parsed.systolic = parsed.systolic or regex_parsed.systolic
+        parsed.diastolic = parsed.diastolic or regex_parsed.diastolic
+        parsed.vitals_confidence = (
+            parsed.vitals_confidence or regex_parsed.vitals_confidence
+        )
+        parsed.emergency_contact = (
+            parsed.emergency_contact or regex_parsed.emergency_contact
+        )
         return parsed
-    return _regex_parse(text)
+    return regex_parsed
 
 
 # ── Inter-agent message handlers ────────────────────────────────────────────
@@ -181,12 +251,21 @@ async def _maybe_dispatch_contact(ctx: Context, request_id: str) -> None:
     req = ContactOrchestratorRequest(
         request_id=request_id,
         user_name=name,
+        age=state.incident.age,
         location_summary=state.location.summary,
         medical_summary=state.medical.summary_for_dispatch,
+        incident_description=state.incident.injury_description,
         severity=state.medical.severity,
         extraction_point=extraction,
         latitude=state.incident.latitude,
         longitude=state.incident.longitude,
+        medical_notes=state.incident.medical_notes,
+        heart_rate_bpm=state.incident.heart_rate_bpm,
+        spo2=state.incident.spo2,
+        systolic=state.incident.systolic,
+        diastolic=state.incident.diastolic,
+        vitals_confidence=state.incident.vitals_confidence,
+        emergency_contact=state.incident.emergency_contact,
         place_call=state.place_call,
     )
     await ctx.send(config.address("contact_orchestrator"), req)
@@ -249,6 +328,8 @@ def _format_plan(state: _Pending) -> str:
             lines.append(f"**Voice audio:** `{contact.voice_audio_path}`")
         if contact.call_sid:
             lines.append(f"**Call SID:** `{contact.call_sid}`")
+        if contact.whatsapp_sid:
+            lines.append(f"**WhatsApp SID:** `{contact.whatsapp_sid}`")
         if contact.notes:
             lines.append(f"**Notes:** {contact.notes}")
         lines.append("")
