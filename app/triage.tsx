@@ -4,11 +4,12 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
+import { GlassButton } from '@/components/glass-button';
 import { GlassCard } from '@/components/glass-card';
 import { usePpgVitals } from '@/hooks/use-ppg-vitals';
 import { dummyVitals } from '@/src/lib/dummy-incident';
 import { useProfileState } from '@/src/lib/profile-store-provider';
-import { Pressable, Text, View } from '@/src/tw';
+import { Text, View } from '@/src/tw';
 
 const SERIF =
   Platform.OS === 'ios'
@@ -17,14 +18,14 @@ const SERIF =
       ? 'serif'
       : "Georgia, 'Times New Roman', serif";
 
-const MONO = Platform.OS === 'ios' ? 'ui-monospace' : 'monospace';
+const MONO: string | undefined = undefined;
 
 const C = {
   text: '#F5EFE4',
   muted: 'rgba(245,239,228,0.72)',
   faint: 'rgba(245,239,228,0.42)',
-  star: '#F0B86E',
-  starSoft: '#F8D9A6',
+  star: '#2D7A4F',
+  starSoft: '#78C99A',
   safe: '#6CC28A',
   edge: 'rgba(255,255,255,0.18)',
   glass: 'rgba(255,255,255,0.08)',
@@ -144,7 +145,11 @@ export default function Triage() {
 
       <LinearGradient
         pointerEvents="none"
-        colors={['rgba(11,14,18,0.78)', 'rgba(11,14,18,0.2)', 'rgba(11,14,18,0.94)']}
+        colors={[
+          'rgba(11,14,18,0.78)',
+          'rgba(11,14,18,0.2)',
+          'rgba(11,14,18,0.94)',
+        ]}
         locations={[0, 0.36, 1]}
         style={StyleAbsoluteFill}
       />
@@ -161,26 +166,12 @@ export default function Triage() {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            justifyContent: 'flex-end',
           }}
         >
-          <Text
-            selectable={false}
-            style={{
-              fontSize: 11,
-              letterSpacing: 3,
-              color: C.faint,
-              fontFamily: MONO,
-            }}
-          >
-            TRIAGE SCAN
-          </Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable
+            <GlassButton
               onPress={() => {
-                // Stamp dummy vitals into the active incident and jump to
-                // the on-device triage placeholder. Useful for exercising the
-                // call layer when the camera or PPG signal isn't usable.
                 updateIncident({ vitals: dummyVitals() });
                 router.replace('/rescue');
               }}
@@ -188,42 +179,41 @@ export default function Triage() {
                 borderRadius: 999,
                 borderWidth: 1,
                 borderColor: 'rgba(201,138,63,0.6)',
-                backgroundColor: 'rgba(240,184,110,0.12)',
-                paddingHorizontal: 12,
-                paddingVertical: 4,
               }}
             >
-              <Text
-                style={{
-                  fontSize: 11,
-                  letterSpacing: 1.6,
-                  color: C.star,
-                  fontFamily: MONO,
-                }}
-              >
-                SKIP
-              </Text>
-            </Pressable>
-            <Pressable
+              <View style={{ paddingHorizontal: 12, paddingVertical: 4 }}>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: 1.6,
+                    color: C.star,
+                    fontFamily: MONO,
+                  }}
+                >
+                  SKIP
+                </Text>
+              </View>
+            </GlassButton>
+            <GlassButton
               onPress={() => router.back()}
-              style={{
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: C.edge,
-                backgroundColor: C.glass,
-                paddingHorizontal: 12,
-                paddingVertical: 4,
-              }}
+              style={{ borderRadius: 999, borderWidth: 1, borderColor: C.edge }}
             >
-              <Text style={{ fontSize: 12, color: C.muted }}>Close</Text>
-            </Pressable>
+              <View style={{ paddingHorizontal: 12, paddingVertical: 4 }}>
+                <Text style={{ fontSize: 12, color: C.muted }}>Close</Text>
+              </View>
+            </GlassButton>
           </View>
         </View>
 
         <View style={{ marginTop: 24, gap: 8 }}>
           <Text
             selectable={false}
-            style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 40, color: C.text }}
+            style={{
+              fontFamily: SERIF,
+              fontSize: 34,
+              lineHeight: 40,
+              color: C.text,
+            }}
           >
             Fingertip PPG
           </Text>
@@ -232,8 +222,8 @@ export default function Triage() {
             style={{ color: C.muted, fontSize: 15, lineHeight: 22 }}
           >
             Cover the rear camera and flash with your fingertip. Northstar uses
-            photoplethysmography to estimate pulse, oxygen saturation, and a
-            blood-pressure trend on-device.
+            photoplethysmography to estimate pulse and oxygen saturation
+            on-device.
           </Text>
         </View>
 
@@ -255,7 +245,9 @@ export default function Triage() {
               }}
             />
           ) : (
-            <GlassCard style={{ paddingHorizontal: 24, paddingVertical: 22, gap: 18 }}>
+            <GlassCard
+              style={{ paddingHorizontal: 24, paddingVertical: 22, gap: 18 }}
+            >
               <View style={{ gap: 14 }}>
                 <View
                   style={{
@@ -341,19 +333,6 @@ export default function Triage() {
                   >
                     {message}
                   </Text>
-                  <Text
-                    selectable={false}
-                    style={{
-                      color: C.faint,
-                      fontFamily: MONO,
-                      fontSize: 11,
-                      letterSpacing: 1.2,
-                    }}
-                  >
-                    {phase === 'complete'
-                      ? `${result?.samplesUsed ?? 0} FRAMES`
-                      : `${samplesCaptured} FRAMES  •  ${secondsRemaining}s LEFT`}
-                  </Text>
                 </View>
 
                 <View
@@ -386,17 +365,6 @@ export default function Triage() {
                   gap: 10,
                 }}
               >
-                <Text
-                  selectable={false}
-                  style={{
-                    color: C.faint,
-                    fontFamily: MONO,
-                    fontSize: 11,
-                    letterSpacing: 2.2,
-                  }}
-                >
-                  DEBUG COLOR
-                </Text>
                 <View
                   style={{
                     flexDirection: 'row',
@@ -439,79 +407,75 @@ export default function Triage() {
               </View>
 
               {phase === 'idle' && !result ? (
-                <Pressable
+                <GlassButton
                   onPress={beginScan}
                   disabled={!cameraReady}
-                  style={({ pressed }) => ({
-                    borderRadius: 999,
-                    borderCurve: 'continuous',
-                    backgroundColor: cameraReady ? C.star : 'rgba(240,184,110,0.4)',
-                    paddingVertical: 16,
-                    opacity: pressed ? 0.84 : 1,
-                  })}
+                  tintColor={C.star}
+                  style={{ borderRadius: 999, borderCurve: 'continuous' }}
                 >
-                  <Text
-                    selectable={false}
-                    style={{
-                      textAlign: 'center',
-                      color: C.void,
-                      fontWeight: '700',
-                      letterSpacing: 2,
-                    }}
-                  >
-                    {cameraReady ? 'BEGIN SCAN' : 'PREPARING CAMERA…'}
-                  </Text>
-                </Pressable>
-              ) : (
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <Pressable
-                    onPress={rescan}
-                    style={({ pressed }) => ({
-                      flex: 1,
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: C.edge,
-                      backgroundColor: C.glass,
-                      paddingVertical: 14,
-                      opacity: pressed ? 0.84 : 1,
-                    })}
-                  >
+                  <View style={{ paddingVertical: 16 }}>
                     <Text
                       selectable={false}
                       style={{
                         textAlign: 'center',
                         color: C.text,
-                        fontWeight: '600',
-                        letterSpacing: 1.8,
+                        fontWeight: '700',
+                        letterSpacing: 2,
                       }}
                     >
-                      RESCAN
+                      {cameraReady ? 'BEGIN SCAN' : 'PREPARING CAMERA…'}
                     </Text>
-                  </Pressable>
-                  <Pressable
+                  </View>
+                </GlassButton>
+              ) : (
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <GlassButton
+                    onPress={rescan}
+                    style={{
+                      flex: 1,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: C.edge,
+                    }}
+                  >
+                    <View style={{ paddingVertical: 14 }}>
+                      <Text
+                        selectable={false}
+                        style={{
+                          textAlign: 'center',
+                          color: C.text,
+                          fontWeight: '600',
+                          letterSpacing: 1.2,
+                        }}
+                      >
+                        RESCAN
+                      </Text>
+                    </View>
+                  </GlassButton>
+                  <GlassButton
                     onPress={() => router.replace('/rescue')}
                     disabled={!result}
-                    style={({ pressed }) => ({
+                    tintColor={C.star}
+                    style={{
                       flex: 1,
                       borderRadius: 999,
                       borderCurve: 'continuous',
-                      backgroundColor: result ? C.star : 'rgba(240,184,110,0.35)',
-                      paddingVertical: 14,
-                      opacity: pressed ? 0.84 : 1,
-                    })}
+                    }}
                   >
-                    <Text
-                      selectable={false}
-                      style={{
-                        textAlign: 'center',
-                        color: C.void,
-                        fontWeight: '700',
-                        letterSpacing: 1.8,
-                      }}
-                    >
-                      CONTINUE
-                    </Text>
-                  </Pressable>
+                    <View style={{ paddingVertical: 14 }}>
+                      <Text
+                        selectable={false}
+                        style={{
+                          textAlign: 'center',
+                          color: C.text,
+                          fontWeight: '700',
+                          letterSpacing: 1.2,
+                        }}
+                      >
+                        CONTINUE
+                      </Text>
+                    </View>
+                  </GlassButton>
                 </View>
               )}
             </GlassCard>
@@ -554,7 +518,12 @@ function PermissionCard({
     <GlassCard style={{ paddingHorizontal: 24, paddingVertical: 24, gap: 14 }}>
       <Text
         selectable={false}
-        style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 34, color: C.text }}
+        style={{
+          fontFamily: SERIF,
+          fontSize: 28,
+          lineHeight: 34,
+          color: C.text,
+        }}
       >
         {title}
       </Text>
@@ -564,25 +533,24 @@ function PermissionCard({
       >
         {body}
       </Text>
-      <Pressable
+      <GlassButton
         onPress={onPress}
-        style={({ pressed }) => ({
+        tintColor={C.star}
+        style={{
           alignSelf: 'flex-start',
           borderRadius: 999,
           borderCurve: 'continuous',
-          backgroundColor: C.star,
-          paddingHorizontal: 18,
-          paddingVertical: 12,
-          opacity: pressed ? 0.84 : 1,
-        })}
+        }}
       >
-        <Text
-          selectable={false}
-          style={{ color: C.void, fontWeight: '700', letterSpacing: 1.8 }}
-        >
-          {actionLabel.toUpperCase()}
-        </Text>
-      </Pressable>
+        <View style={{ paddingHorizontal: 18, paddingVertical: 12 }}>
+          <Text
+            selectable={false}
+            style={{ color: C.text, fontWeight: '700', letterSpacing: 1.8 }}
+          >
+            {actionLabel.toUpperCase()}
+          </Text>
+        </View>
+      </GlassButton>
     </GlassCard>
   );
 }
@@ -616,7 +584,12 @@ function VitalsRow({
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
         <Text
           selectable={false}
-          style={{ color: C.text, fontSize: 28, lineHeight: 30, fontFamily: SERIF }}
+          style={{
+            color: C.text,
+            fontSize: 28,
+            lineHeight: 30,
+            fontFamily: SERIF,
+          }}
         >
           {value}
         </Text>

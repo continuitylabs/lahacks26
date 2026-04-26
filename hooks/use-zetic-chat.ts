@@ -15,10 +15,22 @@ export type LoadStatus =
   | { kind: 'ready' }
   | { kind: 'error'; message: string };
 
-const MODEL_ID = 'Steve/Qwen3.5-2B';
+const MODEL_ID = 'Qwen/Qwen3-4B';
 
-const SYSTEM_PROMPT =
-  "You are a helpful assistant that helps the user with hiking injuries. Please do not use any emojis. I REPEAT DO NOT EVER USE EMOJIS IN YOUR RESPONSE. This is a voice to voice conversation so do not use any markdown formatting. The user is most likely in trouble so respond very shortly and ask as many questions about the user's current situation. Do not overthink. It is most certainly not that deep.";
+const SYSTEM_PROMPT = `You are a helpful assistant that helps the user with hiking emergencies in remote locations. This is a voice to voice conversation so do not use any markdown formatting or emojis. Do not overthink (usually one or two short sentences of thinking is enough (one paragraph max (150 words max))). Make sure to respond with only one question at a time. You give suggestions in your responses as well.
+
+Use the SALT method to assess the user's current state through your questioning, progressing through these phases in order:
+
+1. Sort (global sorting): First determine the user's overall mobility and responsiveness. Can they walk? Are they still or immobile? Do they have any obvious life threats? Start with the most urgent global question.
+
+2. Assess (individual assessment): Ask simple yes/no questions to check for life threats. Are they breathing normally? Do they obey commands and follow your instructions? Do they have a peripheral pulse? Is there any major bleeding (uncontrolled hemorrhage)? Any obvious severe trauma?
+
+3. Lifesaving Interventions: If you identify a life threat, immediately guide the user through quick interventions before continuing. Examples: apply direct pressure or improvise a tourniquet for major bleeding, reposition the head to open a blocked airway, get them out of immediate environmental danger (cold water, unstable terrain). Each intervention should be something doable in under a minute.
+
+4. Treatment and Transport: Once immediate threats are addressed, gather information needed to get them to safety or to rescuers. Ask about their exact location, surroundings, ability to self-evacuate, available gear (water, shelter, warm layers, phone signal, whistle), time of day, weather, and whether anyone else is with them or knows where they are
+
+Always advance to the next phase only after the current one is resolved. If at any point a new life threat appears, return to Lifesaving Interventions immediately. Ask only one question per turn and keep every response to one or two short sentences since this is a voice conversation and the user is in distress.`;
+// "You are a helpful assistant that helps the user with hiking emergencies in remote locations. This is a voice to voice conversation so do not use any markdown formatting or emojis. The user is most likely in trouble so respond very shortly and ask as many questions about the user's current situation. Do not overthink (usually one or two short sentences of thinking is enough). Make sure to respond with only one question at a time";
 // 'Your thinking must be no more than 1 sentence. You are a helpful assistant that helps the user with hiking injuries.';
 
 // ~4 chars/token, targeting ~30k input tokens to leave room for generation within Qwen3's 32k window
@@ -34,12 +46,13 @@ function buildPrompt(history: ChatMessage[], system: string): string {
   for (let i = history.length - 1; i >= 0; i--) {
     const m = history[i];
     const role = m.role === 'user' ? 'user' : 'assistant';
-    const line = `<|im_start|>${role}\n${m.text}<|im_end|>\n`;
+    const line = `<|im_start|>${role}\n${role === 'assistant' ? '<think>\n\n</think>\n\n' : ''}${m.text}<|im_end|>\n`;
     if (length + line.length > budget) break;
     lines.unshift(line);
     length += line.length;
   }
-  return `${systemLine}${lines.join('\n')}<|im_start|>assistant<think>Okay, I need to respond to this emergency situation. First, I should assess the severity. Is the user in distress? Are there any signs of severe injury? I need to keep it brief. I should ask questions to understand the situation better. Wait, but I need to be concise. Let me structure the questions. Wait, I should ask if they can move the leg without pain. Then ask about any bleeding. Then ask about the rock's position. Wait, but I need to make sure I don't use markdown. So just plain text. Wait, but in the initial prompt, it says "do not use any emojis" and "do not use any markdown". So I need to avoid both. So just plain text. Okay.</think>`;
+  // return `${systemLine}${lines.join('\n')}<|im_start|>assistant<think>Okay, I need to respond to this emergency situation. First, I should assess the severity. Is the user in distress? Are there any signs of severe injury? I need to keep it brief. I should ask questions to understand the situation better.</think>`;
+  return `${systemLine}${lines.join('\n')}<|im_start|>assistant\n<think>\n\n</think>\n\n`;
 }
 
 function makeId() {

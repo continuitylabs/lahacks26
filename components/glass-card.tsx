@@ -1,10 +1,13 @@
 import { BlurView } from 'expo-blur';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Platform, type StyleProp, type ViewStyle } from 'react-native';
 
 import { View, type ViewProps } from '@/src/tw';
 
+const LIQUID_GLASS = isLiquidGlassAvailable();
+
 type Props = Omit<ViewProps, 'style'> & {
-  /** Blur intensity (0-100). Higher = more frosted. */
+  /** Blur intensity (0-100). Higher = more frosted. Ignored on iOS 26+. */
   intensity?: number;
   style?: StyleProp<ViewStyle>;
 };
@@ -31,25 +34,39 @@ export function GlassCard({
           borderCurve: 'continuous',
           borderWidth: 1,
           borderColor: 'rgba(255,255,255,0.18)',
-          backgroundColor:
-            Platform.OS === 'ios'
+          backgroundColor: LIQUID_GLASS
+            ? 'transparent'
+            : Platform.OS === 'ios'
               ? 'rgba(255,255,255,0.08)'
               : 'rgba(255,255,255,0.14)',
         },
         style,
       ]}
     >
-      <BlurView
-        intensity={intensity}
-        tint="dark"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-        }}
-      />
+      {LIQUID_GLASS ? (
+        <GlassView
+          glassEffectStyle="regular"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+          }}
+        />
+      ) : (
+        <BlurView
+          intensity={intensity}
+          tint="dark"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+          }}
+        />
+      )}
       {children}
     </View>
   );

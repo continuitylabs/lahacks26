@@ -723,7 +723,9 @@ class ZeticLlm: RCTEventEmitter {
             personalKey: personalKey,
             name: name,
             version: 1,
-            modelMode: LLMModelMode.RUN_AUTO
+            target: .LLAMA_CPP,
+            quantType: .GGUF_QUANT_Q4_K_M,
+            apType: .CPU
           ) { progress in
             self.send("zetic:download", ["progress": progress])
           }

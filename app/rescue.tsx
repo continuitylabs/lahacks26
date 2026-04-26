@@ -11,6 +11,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { GlassButton } from '@/components/glass-button';
 import { GlassCard } from '@/components/glass-card';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { composeIncidentPayload } from '@/src/lib/compose-incident-payload';
@@ -38,14 +39,14 @@ const SANS =
       ? 'sans-serif'
       : 'sans-serif';
 
-const MONO = Platform.OS === 'ios' ? 'ui-monospace' : 'monospace';
+const MONO: string | undefined = undefined;
 
 const C = {
   text: '#F5EFE4',
   muted: 'rgba(245,239,228,0.7)',
   faint: 'rgba(245,239,228,0.4)',
-  star: '#F0B86E',
-  starDeep: '#C98A3F',
+  star: '#2D7A4F',
+  starDeep: '#1A5535',
   edge: 'rgba(255,255,255,0.18)',
   glass: 'rgba(255,255,255,0.08)',
   void: '#0b0e12',
@@ -105,7 +106,7 @@ export default function Rescue() {
 
     const payload = composeIncidentPayload(
       state,
-      location.status === 'granted' ? location.coords : null
+      location.status === 'granted' ? location.coords : null,
     );
 
     setAgentPhase({ kind: 'pending' });
@@ -173,8 +174,6 @@ export default function Rescue() {
           },
         });
         setAgentPhase({ kind: 'error', message });
-        // Don't auto-advance on error — let the user read the diagnostic
-        // panel and tap "Continue anyway" when ready.
       });
   }, [ready, state, location.status, location.coords, updateIncident]);
 
@@ -228,43 +227,31 @@ export default function Rescue() {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            justifyContent: 'flex-end',
             marginBottom: 8,
           }}
         >
-          <Text
-            selectable={false}
-            style={{
-              fontSize: 11,
-              letterSpacing: 3,
-              color: C.faint,
-              fontFamily: MONO,
-            }}
-          >
-            FETCH.AI AGENTVERSE
-          </Text>
-          <Pressable
+          <GlassButton
             onPress={skip}
             style={{
               borderRadius: 999,
               borderWidth: 1,
               borderColor: 'rgba(201,138,63,0.6)',
-              backgroundColor: 'rgba(240,184,110,0.12)',
-              paddingHorizontal: 12,
-              paddingVertical: 4,
             }}
           >
-            <Text
-              style={{
-                fontSize: 11,
-                letterSpacing: 1.6,
-                color: C.star,
-                fontFamily: MONO,
-              }}
-            >
-              SKIP
-            </Text>
-          </Pressable>
+            <View style={{ paddingHorizontal: 12, paddingVertical: 4 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  letterSpacing: 1.6,
+                  color: C.star,
+                  fontFamily: MONO,
+                }}
+              >
+                SKIP
+              </Text>
+            </View>
+          </GlassButton>
         </View>
 
         <Text
@@ -325,37 +312,37 @@ export default function Rescue() {
           ) : null}
 
           {agentPhase.kind === 'error' || agentPhase.kind === 'success' ? (
-            <Pressable
+            <GlassButton
               onPress={() => {
-                advanced.current = false; // allow re-advance
+                advanced.current = false;
                 advance({ immediate: true });
               }}
-              style={({ pressed }) => ({
+              tintColor={agentPhase.kind === 'error' ? C.star : undefined}
+              style={{
                 marginTop: 8,
                 borderRadius: 999,
                 borderCurve: 'continuous',
-                backgroundColor: agentPhase.kind === 'error' ? C.star : C.glass,
                 borderWidth: agentPhase.kind === 'error' ? 0 : 1,
                 borderColor: C.edge,
-                paddingVertical: 14,
-                opacity: pressed ? 0.84 : 1,
-              })}
+              }}
             >
-              <Text
-                style={{
-                  textAlign: 'center',
-                  fontFamily: MONO,
-                  fontSize: 12,
-                  letterSpacing: 2,
-                  color: agentPhase.kind === 'error' ? C.void : C.text,
-                  fontWeight: '700',
-                }}
-              >
-                {agentPhase.kind === 'error'
-                  ? 'CONTINUE ANYWAY'
-                  : 'CONTINUE NOW'}
-              </Text>
-            </Pressable>
+              <View style={{ paddingVertical: 14 }}>
+                <Text
+                  style={{
+                    textAlign: 'center',
+                    fontFamily: MONO,
+                    fontSize: 12,
+                    letterSpacing: 2,
+                    color: agentPhase.kind === 'error' ? C.void : C.text,
+                    fontWeight: '700',
+                  }}
+                >
+                  {agentPhase.kind === 'error'
+                    ? 'CONTINUE ANYWAY'
+                    : 'CONTINUE NOW'}
+                </Text>
+              </View>
+            </GlassButton>
           ) : null}
         </ScrollView>
       </View>
@@ -377,10 +364,10 @@ function AgentRow({
     pulse.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }),
-        withTiming(0.45, { duration: 900, easing: Easing.inOut(Easing.quad) })
+        withTiming(0.4, { duration: 900, easing: Easing.inOut(Easing.quad) }),
       ),
       -1,
-      false
+      false,
     );
   }, [pulse]);
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
@@ -590,3 +577,4 @@ function ErrorState({ message }: { message: string }) {
     </GlassCard>
   );
 }
+

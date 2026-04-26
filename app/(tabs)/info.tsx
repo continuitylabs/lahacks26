@@ -12,15 +12,14 @@ const SERIF =
       ? 'serif'
       : "Georgia, 'Times New Roman', serif";
 
-const MONO =
-  Platform.OS === 'ios' ? 'ui-monospace' : 'monospace';
+const MONO: string | undefined = undefined;
 
 const C = {
   text: '#F5EFE4',
   muted: 'rgba(245,239,228,0.7)',
   faint: 'rgba(245,239,228,0.4)',
-  star: '#F0B86E',
-  starDeep: '#C98A3F',
+  star: '#2D7A4F',
+  starDeep: '#1A5535',
   edge: 'rgba(255,255,255,0.18)',
   glass: 'rgba(255,255,255,0.08)',
 };
@@ -78,7 +77,7 @@ export default function Info() {
           <Layer
             chip="ZETIC · ON-DEVICE"
             title="Triage"
-            body="Rear camera + flash capture a fingertip PPG waveform offline, giving Northstar a quick pulse, SpO2 estimate, and blood-pressure trend before rescue coordination begins."
+            body="Rear camera + flash capture a fingertip PPG waveform offline, giving Northstar a quick pulse and SpO2 estimate before rescue coordination begins."
           />
           <Layer
             chip="FETCH.AI · AGENTVERSE"

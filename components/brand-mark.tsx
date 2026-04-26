@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withSequence,
   withTiming,
-  Easing,
 } from 'react-native-reanimated';
 
 import { Text, View } from '@/src/tw';
@@ -44,10 +44,10 @@ export function BrandMark({
     opacity.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.quad) }),
-        withTiming(0.55, { duration: 2400, easing: Easing.inOut(Easing.quad) })
+        withTiming(0.55, { duration: 2400, easing: Easing.inOut(Easing.quad) }),
       ),
       -1,
-      false
+      false,
     );
   }, [opacity]);
 
@@ -66,13 +66,15 @@ export function BrandMark({
       >
         <Animated.Text
           style={[
-            starStyle,
+            // starStyle,
             {
-              color: '#F0B86E',
+              // color: '#2D7A4F',
+              color: 'white',
               fontSize: s.star,
               lineHeight: s.star * 1.1,
-              textShadowColor: 'rgba(240, 184, 110, 0.6)',
-              textShadowRadius: 14,
+              textShadowColor: 'rgba(0, 0, 0, 1)',
+              textShadowOffset: { width: 0, height: 1 },
+              textShadowRadius: 10,
             },
           ]}
         >
@@ -86,9 +88,9 @@ export function BrandMark({
             fontSize: s.wordmark,
             lineHeight: s.wordmark * 1.1,
             letterSpacing: s.wordmark * 0.18,
-            textShadowColor: 'rgba(0, 0, 0, 0.7)',
+            textShadowColor: 'rgba(0, 0, 0, 1)',
             textShadowOffset: { width: 0, height: 1 },
-            textShadowRadius: 6,
+            textShadowRadius: 10,
           }}
         >
           NORTHSTAR
