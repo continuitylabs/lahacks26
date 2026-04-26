@@ -1,9 +1,11 @@
 """Anthropic Claude wrappers used by Northstar agents.
 
-Three call sites:
+Five call sites:
 - parse_incident: turn a free-form chat message into structured fields
-- classify_severity: reason about triage findings, output ESI-like urgency
-- compose_rescue_script: write the dispatcher script in calm, factual prose
+- compose_location_paragraph: location/SAR paragraph for the dispatcher
+- analyze_weather_urgency: weather + injury → urgency modifier + paragraph
+- compose_optimized_script: integrates all inputs into the final script
+- plan_next_steps: structured cards for the post-call Instructions screen
 
 Every call is best-effort — agents fall back to heuristics when no key is set
 or when the API fails, so the demo still runs offline.
@@ -17,13 +19,21 @@ from anthropic import AsyncAnthropic
 from pydantic import BaseModel
 
 from .. import config
-from ..schemas import IncidentBrief, MedicalCoordinatorResponse, Severity
+from ..schemas import (
+    IncidentBrief,
+    NextStepCard,
+    POI,
+    Severity,
+    UrgencyModifier,
+    VitalsSnapshot,
+    WeatherSnapshot,
+)
 
 
 # uAgents Models are Pydantic V1; the Anthropic SDK's structured-output path
-# (messages.parse with output_format=...) generates V2 JSON schemas via
-# TypeAdapter and rejects V1 models. These V2 mirrors exist solely as the
-# output_format schema; we convert back to the V1 wire types before returning.
+# generates V2 JSON schemas via TypeAdapter and rejects V1 models. These V2
+# mirrors exist solely as the output_format schema; we convert back to the V1
+# wire types before returning.
 
 
 class _IncidentBriefV2(BaseModel):
@@ -33,16 +43,18 @@ class _IncidentBriefV2(BaseModel):
     location_description: str
     injury_description: str
     triage_findings: list[str]
-    severity_hints: Optional[str] = None
+    severity_hint: Optional[Severity] = None
 
 
-class _MedicalAssessmentV2(BaseModel):
-    severity: Severity
-    urgency_score: int
-    rationale: str
-    immediate_actions: list[str]
-    monitoring_for: list[str]
-    summary_for_dispatch: str
+class _WeatherAssessmentV2(BaseModel):
+    urgency_modifier: UrgencyModifier
+    script_paragraph: str
+    summary: str
+
+
+class _NextStepsPlanV2(BaseModel):
+    header: str
+    cards: list[dict]  # {title, body} — kept loose to avoid V1/V2 collision
 
 
 _client: Optional[AsyncAnthropic] = None
@@ -57,6 +69,8 @@ def _get_client() -> Optional[AsyncAnthropic]:
     _client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
     return _client
 
+
+# ── parse_incident ──────────────────────────────────────────────────────────
 
 _PARSE_SYSTEM = """You extract structured incident reports from user messages \
 sent to Northstar, an emergency-rescue assistant for hikers and mountain bikers.
@@ -83,91 +97,168 @@ async def parse_incident(text: str) -> Optional[IncidentBrief]:
         parsed = msg.parsed_output
         if parsed is None:
             return None
-        return IncidentBrief(**parsed.model_dump())
+        # IncidentBrief expects extra fields (transcript, vitals, etc.);
+        # callers fill those in from the YAML/structured payload.
+        return IncidentBrief(**parsed.model_dump(), triage_transcript=[])
     except (anthropic.APIError, ValueError):
         return None
 
 
-_SEVERITY_SYSTEM = """You are a wilderness-medicine triage assistant.
+# ── compose_location_paragraph ──────────────────────────────────────────────
 
-Given an incident description and on-device triage findings, return a \
-structured assessment. urgency_score follows the Emergency Severity Index: \
-1=resuscitation needed, 2=emergent, 3=urgent, 4=less urgent, 5=non-urgent.
+_LOCATION_SYSTEM = """You are writing a single 2-3 sentence paragraph for a \
+911-style dispatcher. Given the nearest ranger station, hospital, helipad, \
+and trailhead, summarize the rescue assets available and the recommended \
+extraction approach. Be factual; no hedging or apologies. Read aloud, the \
+paragraph should fit in ~15 seconds."""
 
-Be conservative — when uncertain, escalate. Reasoning should be one or two \
-sentences a 911 dispatcher could read aloud."""
+
+def _poi_block(label: str, poi: Optional[POI]) -> str:
+    if poi is None:
+        return f"- {label}: none within search radius"
+    return (
+        f"- {label}: {poi.name} ({poi.distance_km:.1f} km {poi.bearing or '?'})"
+        + (f", phone {poi.phone}" if poi.phone else "")
+    )
 
 
-async def classify_severity(
-    request_id: str,
-    incident_description: str,
-    triage_findings: list[str],
-    user_name: Optional[str],
-) -> Optional[MedicalCoordinatorResponse]:
+async def compose_location_paragraph(
+    ranger: Optional[POI],
+    hospital: Optional[POI],
+    helipad: Optional[POI],
+    trailhead: Optional[POI],
+    extraction_recommendation: str,
+) -> Optional[str]:
     client = _get_client()
     if client is None:
         return None
-    findings_block = "\n".join(f"- {f}" for f in triage_findings) or "(none reported)"
-    user_msg = (
-        f"Patient: {user_name or 'unknown'}\n"
-        f"Incident: {incident_description}\n"
-        f"On-device triage findings:\n{findings_block}"
+    body = "\n".join(
+        [
+            _poi_block("Ranger station", ranger),
+            _poi_block("Hospital", hospital),
+            _poi_block("Helipad", helipad),
+            _poi_block("Trailhead", trailhead),
+            f"Extraction recommendation: {extraction_recommendation}",
+        ]
     )
+    try:
+        msg = await client.messages.create(
+            model=config.CLAUDE_MODEL,
+            max_tokens=512,
+            system=_LOCATION_SYSTEM,
+            messages=[{"role": "user", "content": body}],
+        )
+        for block in msg.content:
+            if getattr(block, "type", None) == "text":
+                return block.text  # type: ignore[attr-defined]
+        return None
+    except anthropic.APIError:
+        return None
 
+
+# ── analyze_weather_urgency ─────────────────────────────────────────────────
+
+_WEATHER_SYSTEM = """You assess how current weather affects a wilderness \
+medical emergency. Return urgency_modifier as exactly one of "elevate", \
+"maintain", or "reduce" — elevate when weather makes the situation more \
+dangerous (cold + open wound, storms blocking helo, etc.), reduce when it \
+buys time (mild conditions stabilizing patient), maintain otherwise.
+
+The script_paragraph is 2-3 sentences a 911 dispatcher would read aloud, \
+explaining current conditions and how they impact the timeline. Be factual."""
+
+
+async def analyze_weather_urgency(
+    snapshot: Optional[WeatherSnapshot],
+    severity_hint: Optional[Severity],
+    injury_keywords: list[str],
+) -> Optional[tuple[UrgencyModifier, str, str]]:
+    client = _get_client()
+    if client is None:
+        return None
+    if snapshot is None:
+        return None
+    body = (
+        f"Weather snapshot: temp={snapshot.temperature_c}°C, wind={snapshot.wind_kmh} km/h, "
+        f"conditions={snapshot.conditions}, helo_flyable={snapshot.helo_flyable}\n"
+        f"Patient severity hint: {severity_hint or 'unknown'}\n"
+        f"Injury keywords: {', '.join(injury_keywords) or '(none)'}"
+    )
     try:
         msg = await client.messages.parse(
             model=config.CLAUDE_MODEL,
-            max_tokens=1024,
-            thinking={"type": "adaptive"},
-            system=_SEVERITY_SYSTEM,
-            messages=[{"role": "user", "content": user_msg}],
-            output_format=_MedicalAssessmentV2,
+            max_tokens=512,
+            system=_WEATHER_SYSTEM,
+            messages=[{"role": "user", "content": body}],
+            output_format=_WeatherAssessmentV2,
         )
         parsed = msg.parsed_output
         if parsed is None:
             return None
-        return MedicalCoordinatorResponse(
-            request_id=request_id,
-            **parsed.model_dump(),
-        )
+        return parsed.urgency_modifier, parsed.script_paragraph, parsed.summary
     except (anthropic.APIError, ValueError):
         return None
 
+
+# ── compose_optimized_script ────────────────────────────────────────────────
 
 _SCRIPT_SYSTEM = """You are drafting an emergency-services dispatch script \
 that an automated voice will read to a 911 dispatcher or search-and-rescue \
 team. The voice on the call is an AI; the patient is incapacitated.
 
+You receive:
+- Patient name + GPS + on-device vitals (HR, SpO2)
+- Triage transcript (what the patient told the on-device assistant)
+- A Location Scout paragraph about nearby rescue assets
+- A Weather Analyst paragraph about conditions and how they affect urgency
+
 Rules:
 - Open with: "This is an automated emergency alert from Northstar."
-- State the patient's name, location, and GPS coordinates exactly once early.
-- State injuries factually, without dramatization.
-- Note severity assessment and that it is on-device, not a clinician.
-- Include the recommended extraction point.
+- State the patient's name, GPS coordinates, and on-device vitals once early.
+- Describe injuries factually using the triage transcript.
+- Include the location paragraph and the weather paragraph verbatim if they fit.
 - End with: "Stand by for further updates from the patient's device. Repeating: ..." \
-followed by name, coordinates, and severity again.
+followed by name and coordinates again.
 - Keep it under 90 seconds at typical reading pace (~150 words).
-- No greetings, no padding, no apologies."""
+- No greetings, no padding, no apologies, no markdown."""
 
 
-async def compose_rescue_script(
+async def compose_optimized_script(
     user_name: str,
-    location_summary: str,
-    medical_summary: str,
-    severity: Severity,
-    extraction_point: Optional[str],
     latitude: float,
     longitude: float,
+    severity_hint: Optional[Severity],
+    location_paragraph: str,
+    weather_paragraph: Optional[str],
+    weather_urgency_modifier: Optional[UrgencyModifier],
+    triage_summary: Optional[str],
+    triage_transcript_text: str,
+    vitals: Optional[VitalsSnapshot],
+    extraction_point: Optional[str],
 ) -> Optional[str]:
     client = _get_client()
     if client is None:
         return None
+    vitals_str = "unknown"
+    if vitals:
+        bits = []
+        if vitals.heart_rate_bpm is not None:
+            bits.append(f"HR {vitals.heart_rate_bpm} bpm")
+        if vitals.spo2 is not None:
+            bits.append(f"SpO2 {vitals.spo2}%")
+        if bits:
+            vitals_str = ", ".join(bits)
+
     body = (
-        f"Patient name: {user_name}\n"
-        f"Location summary: {location_summary}\n"
+        f"Patient: {user_name}\n"
         f"GPS: {latitude:.5f}, {longitude:.5f}\n"
-        f"Medical summary: {medical_summary}\n"
-        f"Severity: {severity}\n"
+        f"Vitals: {vitals_str}\n"
+        f"Severity hint: {severity_hint or 'unknown'}\n"
+        f"Triage summary: {triage_summary or '(none)'}\n"
+        f"Triage transcript:\n{triage_transcript_text or '(none)'}\n\n"
+        f"Location paragraph: {location_paragraph}\n"
+        f"Weather paragraph: {weather_paragraph or '(weather unavailable)'}\n"
+        f"Weather urgency modifier: {weather_urgency_modifier or 'maintain'}\n"
         f"Extraction point: {extraction_point or 'not yet identified'}"
     )
     try:
@@ -183,4 +274,73 @@ async def compose_rescue_script(
                 return block.text  # type: ignore[attr-defined]
         return None
     except anthropic.APIError:
+        return None
+
+
+# ── plan_next_steps ─────────────────────────────────────────────────────────
+
+_NEXT_STEPS_SYSTEM = """You are writing post-call wilderness first-aid \
+guidance for an injured user. They've already triggered an emergency call; \
+help is being dispatched. Your job is what they should do RIGHT NOW for the \
+next 5-15 minutes while waiting.
+
+Return JSON with:
+- header: a single sentence (max 12 words) — the headline reassurance/instruction
+- cards: 3 to 5 cards, each {title, body}. Title is 2-5 words. Body is 1-2 \
+sentences of practical guidance specific to the injury, environment, and \
+severity.
+
+Topics to cover (pick 3-5 most relevant): immediate first aid, conserving \
+warmth/battery/signal, when to escalate, stabilization, hydration. \
+Avoid vague platitudes. No emojis, no markdown.
+
+Severity buckets:
+- minor: focus on self-care + walk-out feasibility
+- moderate: focus on stabilization + monitoring
+- severe/critical: focus on staying still + maintaining airway/circulation"""
+
+
+async def plan_next_steps(
+    severity_hint: Optional[Severity],
+    injury_keywords: list[str],
+    triage_summary: Optional[str],
+    triage_transcript_text: str,
+    vitals: Optional[VitalsSnapshot],
+    location_summary: Optional[str],
+    weather_summary: Optional[str],
+) -> Optional[tuple[str, list[NextStepCard]]]:
+    client = _get_client()
+    if client is None:
+        return None
+    body = (
+        f"Severity: {severity_hint or 'unknown'}\n"
+        f"Injury keywords: {', '.join(injury_keywords) or '(none)'}\n"
+        f"Triage summary: {triage_summary or '(none)'}\n"
+        f"Triage transcript:\n{triage_transcript_text or '(none)'}\n"
+        f"Vitals: HR={vitals.heart_rate_bpm if vitals else '?'}, "
+        f"SpO2={vitals.spo2 if vitals else '?'}\n"
+        f"Location: {location_summary or '(unknown)'}\n"
+        f"Weather: {weather_summary or '(unknown)'}"
+    )
+    try:
+        msg = await client.messages.parse(
+            model=config.CLAUDE_MODEL,
+            max_tokens=1024,
+            thinking={"type": "adaptive"},
+            system=_NEXT_STEPS_SYSTEM,
+            messages=[{"role": "user", "content": body}],
+            output_format=_NextStepsPlanV2,
+        )
+        parsed = msg.parsed_output
+        if parsed is None:
+            return None
+        cards = [
+            NextStepCard(title=str(c.get("title", "")), body=str(c.get("body", "")))
+            for c in parsed.cards
+            if isinstance(c, dict) and c.get("title") and c.get("body")
+        ]
+        if not cards:
+            return None
+        return parsed.header, cards
+    except (anthropic.APIError, ValueError):
         return None
