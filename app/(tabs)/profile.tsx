@@ -1,5 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
+import type { TextStyle } from 'react-native';
 import { KeyboardAvoidingView, Platform } from 'react-native';
 import Animated, {
   type AnimatedStyle,
@@ -9,7 +10,6 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import type { TextStyle } from 'react-native';
 
 import { BrandMark } from '@/components/brand-mark';
 import { GlassCard } from '@/components/glass-card';
@@ -29,7 +29,7 @@ const C = {
   text: '#F5EFE4',
   muted: 'rgba(245,239,228,0.7)',
   faint: 'rgba(245,239,228,0.4)',
-  star: '#F0B86E',
+  star: '#2D7A4F',
   edge: 'rgba(255,255,255,0.18)',
   bad: 'rgba(229,72,77,0.6)',
 };
@@ -141,7 +141,7 @@ function useSavedPulse() {
   const trigger = () => {
     opacity.value = withSequence(
       withTiming(1, { duration: 180, easing: Easing.out(Easing.quad) }),
-      withTiming(0, { duration: 800, easing: Easing.in(Easing.quad) })
+      withTiming(0, { duration: 800, easing: Easing.in(Easing.quad) }),
     );
   };
   const style = useAnimatedStyle<TextStyle>(() => ({ opacity: opacity.value }));
@@ -200,7 +200,9 @@ function FieldLabel({ children }: { children: string }) {
   );
 }
 
-function Input(props: React.ComponentProps<typeof TextInput> & { invalid?: boolean }) {
+function Input(
+  props: React.ComponentProps<typeof TextInput> & { invalid?: boolean },
+) {
   const { invalid, style, ...rest } = props;
   return (
     <TextInput
@@ -231,7 +233,9 @@ function IdentityCard() {
   const pulse = useSavedPulse();
 
   const [name, setName] = useState(profile.userName);
-  const [age, setAge] = useState(profile.age == null ? '' : String(profile.age));
+  const [age, setAge] = useState(
+    profile.age == null ? '' : String(profile.age),
+  );
 
   // Re-sync local fields if the store hydrates after first paint, or if
   // another writer changes them.
@@ -269,7 +273,7 @@ function IdentityCard() {
       commitNameRef.current();
       commitAgeRef.current();
     },
-    []
+    [],
   );
 
   if (!loaded) return <SkeletonCard />;
@@ -341,16 +345,21 @@ function EmergencyContactCard() {
       commitNameRef.current();
       commitPhoneRef.current();
     },
-    []
+    [],
   );
 
-  const phoneInvalid = phone.length > 0 && phoneDigitCount(phone) < PHONE_MIN_DIGITS;
+  const phoneInvalid =
+    phone.length > 0 && phoneDigitCount(phone) < PHONE_MIN_DIGITS;
 
   if (!loaded) return <SkeletonCard />;
 
   return (
     <GlassCard style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 14 }}>
-      <SectionHeader glyph="✚" title="Emergency contact" pulseStyle={pulse.style} />
+      <SectionHeader
+        glyph="✚"
+        title="Emergency contact"
+        pulseStyle={pulse.style}
+      />
       <View>
         <FieldLabel>NAME</FieldLabel>
         <Input
@@ -401,14 +410,18 @@ function MedicalNotesCard() {
     () => () => {
       commitRef.current();
     },
-    []
+    [],
   );
 
   if (!loaded) return <SkeletonCard />;
 
   return (
     <GlassCard style={{ paddingHorizontal: 20, paddingVertical: 16, gap: 14 }}>
-      <SectionHeader glyph="✦" title="Medical baseline" pulseStyle={pulse.style} />
+      <SectionHeader
+        glyph="✦"
+        title="Medical baseline"
+        pulseStyle={pulse.style}
+      />
       <Input
         value={notes}
         onChangeText={setNotes}
@@ -441,7 +454,7 @@ function LastBeaconCard() {
         paddingHorizontal: 20,
         paddingVertical: 16,
         gap: 12,
-        borderColor: 'rgba(240,184,110,0.25)',
+        borderColor: 'rgba(45,122,79,0.25)',
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -562,10 +575,7 @@ function BeaconRow({
           {meta}
         </Text>
       </View>
-      <Text
-        selectable
-        style={{ color: C.text, fontSize: 13, lineHeight: 18 }}
-      >
+      <Text selectable style={{ color: C.text, fontSize: 13, lineHeight: 18 }}>
         {value}
       </Text>
     </View>

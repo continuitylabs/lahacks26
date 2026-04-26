@@ -36,13 +36,13 @@
     --color-ns-glass-edge: rgba(255, 255, 255, 0.18);
 
     /* The "north star" — guidance, the safe path home */
-    --color-ns-star: #f0b86e;
-    --color-ns-star-soft: #f8d9a6;
-    --color-ns-star-deep: #c98a3f;
+    --color-ns-star: #2d7a4f;
+    --color-ns-star-soft: #78c99a;
+    --color-ns-star-deep: #1a5535;
 
     /* Status — only crimson for true emergencies */
     --color-ns-safe: #6cc28a;
-    --color-ns-alert: #f0b86e;
+    --color-ns-alert: #2d7a4f;
     --color-ns-critical: #e5484d;
 
     /* Foreground tones */

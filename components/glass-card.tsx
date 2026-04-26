@@ -32,7 +32,7 @@ export function GlassCard({
           overflow: 'hidden',
           borderRadius: 24,
           borderCurve: 'continuous',
-          borderWidth: LIQUID_GLASS ? 0 : 1,
+          borderWidth: 1,
           borderColor: 'rgba(255,255,255,0.18)',
           backgroundColor: LIQUID_GLASS
             ? 'transparent'

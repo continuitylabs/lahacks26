@@ -11,12 +11,13 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { GlassButton } from '@/components/glass-button';
 import { GlassCard } from '@/components/glass-card';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { composeIncidentPayload } from '@/src/lib/compose-incident-payload';
 import { reportIncident, type ReportResult } from '@/src/lib/northstar';
 import { useProfileState } from '@/src/lib/profile-store-provider';
-import { Pressable, Text, View } from '@/src/tw';
+import { Text, View } from '@/src/tw';
 
 const SERIF =
   Platform.OS === 'ios'
@@ -38,8 +39,8 @@ const C = {
   text: '#F5EFE4',
   muted: 'rgba(245,239,228,0.7)',
   faint: 'rgba(245,239,228,0.4)',
-  star: '#F0B86E',
-  starDeep: '#C98A3F',
+  star: '#2D7A4F',
+  starDeep: '#1A5535',
   edge: 'rgba(255,255,255,0.18)',
   glass: 'rgba(255,255,255,0.08)',
   void: '#0b0e12',
@@ -66,7 +67,7 @@ export default function Rescue() {
     fired.current = true;
     const payload = composeIncidentPayload(
       state,
-      location.status === 'granted' ? location.coords : null
+      location.status === 'granted' ? location.coords : null,
     );
     reportIncident(payload)
       .then((result) => {
@@ -82,9 +83,16 @@ export default function Rescue() {
         setPhase({
           kind: 'error',
           message: err instanceof Error ? err.message : String(err),
-        })
+        }),
       );
-  }, [ready, state, location.status, location.coords.latitude, location.coords.longitude, updateSession]);
+  }, [
+    ready,
+    state,
+    location.status,
+    location.coords.latitude,
+    location.coords.longitude,
+    updateSession,
+  ]);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.void }}>
@@ -105,34 +113,18 @@ export default function Rescue() {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            justifyContent: 'flex-end',
             marginBottom: 8,
           }}
         >
-          <Text
-            selectable={false}
-            style={{
-              fontSize: 11,
-              letterSpacing: 3,
-              color: C.faint,
-              fontFamily: MONO,
-            }}
-          >
-            RESCUE COORDINATION
-          </Text>
-          <Pressable
+          <GlassButton
             onPress={() => router.dismissAll()}
-            style={{
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: C.edge,
-              backgroundColor: C.glass,
-              paddingHorizontal: 12,
-              paddingVertical: 4,
-            }}
+            style={{ borderRadius: 999, borderWidth: 1, borderColor: C.edge }}
           >
-            <Text style={{ fontSize: 12, color: C.muted }}>Done</Text>
-          </Pressable>
+            <View style={{ paddingHorizontal: 12, paddingVertical: 4 }}>
+              <Text style={{ fontSize: 12, color: C.muted }}>Done</Text>
+            </View>
+          </GlassButton>
         </View>
 
         <Text
@@ -151,7 +143,9 @@ export default function Rescue() {
 
         {phase.kind === 'pending' && <PendingState ready={ready} />}
         {phase.kind === 'error' && <ErrorState message={phase.message} />}
-        {phase.kind === 'success' && <Markdown source={phase.result.markdown} />}
+        {phase.kind === 'success' && (
+          <Markdown source={phase.result.markdown} />
+        )}
       </View>
     </View>
   );
@@ -163,19 +157,31 @@ function PendingState({ ready }: { ready: boolean }) {
     pulse.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }),
-        withTiming(0.4, { duration: 900, easing: Easing.inOut(Easing.quad) })
+        withTiming(0.4, { duration: 900, easing: Easing.inOut(Easing.quad) }),
       ),
       -1,
-      false
+      false,
     );
   }, [pulse]);
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
 
   const steps = [
-    { label: 'Phone Agent', sub: 'sending chat protocol message', chip: 'FETCH.AI' },
+    {
+      label: 'Phone Agent',
+      sub: 'sending chat protocol message',
+      chip: 'FETCH.AI',
+    },
     { label: 'Location Scout', sub: 'Overpass · Open-Meteo', chip: 'AGENT A' },
-    { label: 'Medical Coordinator', sub: 'Claude triage reasoning', chip: 'AGENT B' },
-    { label: 'Contact Orchestrator', sub: 'drafting dispatch script', chip: 'AGENT C' },
+    {
+      label: 'Medical Coordinator',
+      sub: 'Claude triage reasoning',
+      chip: 'AGENT B',
+    },
+    {
+      label: 'Contact Orchestrator',
+      sub: 'drafting dispatch script',
+      chip: 'AGENT C',
+    },
   ];
 
   return (
@@ -205,8 +211,12 @@ function PendingState({ ready }: { ready: boolean }) {
           >
             <ActivityIndicator color={C.star} />
             <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={{ fontFamily: SERIF, fontSize: 16, color: C.text }}>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+              >
+                <Text
+                  style={{ fontFamily: SERIF, fontSize: 16, color: C.text }}
+                >
                   {s.label}
                 </Text>
                 <Text
@@ -226,7 +236,12 @@ function PendingState({ ready }: { ready: boolean }) {
                 </Text>
               </View>
               <Text
-                style={{ marginTop: 2, fontSize: 12, color: C.muted, fontFamily: SANS }}
+                style={{
+                  marginTop: 2,
+                  fontSize: 12,
+                  color: C.muted,
+                  fontFamily: SANS,
+                }}
               >
                 {s.sub}
               </Text>
@@ -247,7 +262,14 @@ function ErrorState({ message }: { message: string }) {
         borderColor: 'rgba(229,72,77,0.4)',
       }}
     >
-      <Text style={{ color: C.critical, fontFamily: MONO, fontSize: 11, letterSpacing: 2 }}>
+      <Text
+        style={{
+          color: C.critical,
+          fontFamily: MONO,
+          fontSize: 11,
+          letterSpacing: 2,
+        }}
+      >
         REQUEST FAILED
       </Text>
       <Text
@@ -270,8 +292,8 @@ function ErrorState({ message }: { message: string }) {
           lineHeight: 16,
         }}
       >
-        Check that `python run_all.py` is running and the Phone Agent is on{' '}
-        port 8004.
+        Check that `python run_all.py` is running and the Phone Agent is on port
+        8004.
       </Text>
     </GlassCard>
   );
@@ -316,10 +338,20 @@ function parseMarkdown(src: string): Block[] {
 }
 
 // Renders inline `**bold**` segments as bold.
-function InlineRich({ text, color, size }: { text: string; color: string; size: number }) {
+function InlineRich({
+  text,
+  color,
+  size,
+}: {
+  text: string;
+  color: string;
+  size: number;
+}) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return (
-    <Text style={{ color, fontFamily: SANS, fontSize: size, lineHeight: size + 6 }}>
+    <Text
+      style={{ color, fontFamily: SANS, fontSize: size, lineHeight: size + 6 }}
+    >
       {parts.map((p, i) => {
         if (p.startsWith('**') && p.endsWith('**')) {
           return (
@@ -387,7 +419,9 @@ function Markdown({ source }: { source: string }) {
                       backgroundColor: C.star,
                     }}
                   />
-                  <Text style={{ fontFamily: SERIF, fontSize: 18, color: C.star }}>
+                  <Text
+                    style={{ fontFamily: SERIF, fontSize: 18, color: C.star }}
+                  >
                     {b.text}
                   </Text>
                 </View>
@@ -402,7 +436,9 @@ function Markdown({ source }: { source: string }) {
                     paddingLeft: 4,
                   }}
                 >
-                  <Text style={{ color: C.faint, fontFamily: MONO, fontSize: 14 }}>
+                  <Text
+                    style={{ color: C.faint, fontFamily: MONO, fontSize: 14 }}
+                  >
                     •
                   </Text>
                   <View style={{ flex: 1 }}>

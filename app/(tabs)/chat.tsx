@@ -9,6 +9,7 @@ import {
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GlassButton } from '@/components/glass-button';
 import { GlassCard } from '@/components/glass-card';
 import { useSpeechOutput } from '@/hooks/use-speech-output';
 import { useVoiceInput } from '@/hooks/use-voice-input';
@@ -33,8 +34,8 @@ const C = {
   text: '#F5EFE4',
   muted: 'rgba(245,239,228,0.7)',
   faint: 'rgba(245,239,228,0.4)',
-  star: '#F0B86E',
-  starDeep: '#C98A3F',
+  star: '#2D7A4F',
+  starDeep: '#1A5535',
   edge: 'rgba(255,255,255,0.18)',
   glass: 'rgba(255,255,255,0.08)',
   bubbleAi: 'rgba(255,255,255,0.06)',
@@ -167,80 +168,60 @@ export default function Chat() {
             >
               Guide
             </Text>
-            <Text
-              selectable={false}
-              style={{
-                marginTop: 4,
-                fontFamily: MONO,
-                color: C.faint,
-                fontSize: 10,
-                letterSpacing: 2.4,
-              }}
-            >
-              ON-DEVICE · QWEN3-4B
-            </Text>
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Pressable
+            <GlassButton
               onPress={speech.toggleEnabled}
-              style={({ pressed }) => ({
-                opacity: pressed ? 0.6 : 1,
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: speech.enabled
-                  ? speech.isSpeaking
-                    ? C.star
-                    : C.edge
-                  : C.edge,
-                backgroundColor: speech.isSpeaking
-                  ? 'rgba(240,184,110,0.14)'
-                  : 'transparent',
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-              })}
-            >
-              <Text
-                selectable={false}
-                style={{
-                  fontFamily: MONO,
-                  color: speech.enabled
-                    ? speech.isSpeaking
-                      ? C.star
-                      : C.muted
-                    : C.faint,
-                  fontSize: 10,
-                  letterSpacing: 2,
-                }}
-              >
-                {speech.enabled ? (speech.isSpeaking ? 'SPEAKING' : 'VOICE') : 'MUTED'}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={clear}
-              disabled={isGenerating || messages.length === 0}
-              style={({ pressed }) => ({
-                opacity: messages.length === 0 || isGenerating ? 0.3 : pressed ? 0.6 : 1,
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: C.edge,
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-              })}
-            >
-              <Text
-              selectable={false}
+              tintColor={speech.isSpeaking ? C.star : undefined}
               style={{
-                fontFamily: MONO,
-                color: C.muted,
-                fontSize: 10,
-                letterSpacing: 2,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: speech.isSpeaking ? C.star : C.edge,
               }}
             >
-              CLEAR
-            </Text>
-          </Pressable>
+              <View style={{ paddingHorizontal: 12, paddingVertical: 6 }}>
+                <Text
+                  selectable={false}
+                  style={{
+                    fontFamily: MONO,
+                    color: speech.enabled
+                      ? speech.isSpeaking
+                        ? C.star
+                        : C.muted
+                      : C.faint,
+                    fontSize: 10,
+                    letterSpacing: 2,
+                  }}
+                >
+                  {speech.enabled
+                    ? speech.isSpeaking
+                      ? 'SPEAKING'
+                      : 'VOICE'
+                    : 'MUTED'}
+                </Text>
+              </View>
+            </GlassButton>
+
+            <GlassButton
+              onPress={clear}
+              disabled={isGenerating || messages.length === 0}
+              style={{ borderRadius: 999, borderWidth: 1, borderColor: C.edge }}
+            >
+              <View style={{ paddingHorizontal: 12, paddingVertical: 6 }}>
+                <Text
+                  selectable={false}
+                  style={{
+                    fontFamily: MONO,
+                    color: C.muted,
+                    fontSize: 10,
+                    letterSpacing: 2,
+                  }}
+                >
+                  CLEAR
+                </Text>
+              </View>
+            </GlassButton>
           </View>
         </View>
 
@@ -255,9 +236,7 @@ export default function Chat() {
         >
           {status.kind !== 'ready' ? <StatusBanner status={status} /> : null}
 
-          {messages.length === 0 && status.kind === 'ready' ? (
-            <Empty />
-          ) : null}
+          {messages.length === 0 && status.kind === 'ready' ? <Empty /> : null}
 
           {messages.map((m) => (
             <Bubble
@@ -340,38 +319,37 @@ export default function Chat() {
             />
 
             {!isGenerating ? (
-              <Pressable
+              <GlassButton
                 onPress={toggleVoice}
                 disabled={!canVoice && !isListening}
-                style={({ pressed }) => ({
-                  opacity:
-                    !canVoice && !isListening ? 0.35 : pressed ? 0.7 : 1,
-                  width: 36,
-                  height: 36,
+                tintColor={isListening ? C.star : undefined}
+                style={{
                   borderRadius: 18,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isListening ? C.star : 'transparent',
                   borderWidth: 1,
                   borderColor: isListening ? C.star : C.edge,
-                })}
+                }}
+                pressableStyle={{
+                  width: 36,
+                  height: 36,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
               >
                 <MicGlyph color={isListening ? C.bg : C.muted} />
-              </Pressable>
+              </GlassButton>
             ) : null}
 
             {isGenerating ? (
-              <Pressable
+              <GlassButton
                 onPress={stop}
-                style={({ pressed }) => ({
-                  opacity: pressed ? 0.7 : 1,
+                tintColor="#E5484D"
+                style={{ borderRadius: 18 }}
+                pressableStyle={{
                   width: 36,
                   height: 36,
-                  borderRadius: 18,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: '#E5484D',
-                })}
+                }}
               >
                 <View
                   style={{
@@ -381,32 +359,31 @@ export default function Chat() {
                     backgroundColor: C.text,
                   }}
                 />
-              </Pressable>
+              </GlassButton>
             ) : (
-              <Pressable
+              <GlassButton
                 onPress={() => {
                   const text = input;
                   setInput('');
                   send(text);
                 }}
                 disabled={!canSend}
-                style={({ pressed }) => ({
-                  opacity: !canSend ? 0.35 : pressed ? 0.7 : 1,
+                tintColor={C.star}
+                style={{ borderRadius: 18 }}
+                pressableStyle={{
                   width: 36,
                   height: 36,
-                  borderRadius: 18,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: C.star,
-                })}
+                }}
               >
                 <Text
                   selectable={false}
-                  style={{ color: C.bg, fontSize: 18, lineHeight: 20 }}
+                  style={{ color: C.text, fontSize: 18, lineHeight: 18 }}
                 >
                   ↑
                 </Text>
-              </Pressable>
+              </GlassButton>
             )}
           </View>
         </View>
@@ -518,8 +495,8 @@ function Empty() {
           lineHeight: 20,
         }}
       >
-        Runs entirely on-device. No signal needed. Ask first-aid, navigation,
-        or weather questions and the model answers offline.
+        Runs entirely on-device. No signal needed. Ask first-aid, navigation, or
+        weather questions and the model answers offline.
       </Text>
     </View>
   );
@@ -604,7 +581,9 @@ function Bubble({
         }}
       >
         {showThinkingBar ? (
-          <View style={{ marginBottom: text.length > 0 || showThinking ? 8 : 0 }}>
+          <View
+            style={{ marginBottom: text.length > 0 || showThinking ? 8 : 0 }}
+          >
             <Pressable
               onPress={() => setShowThinking((s) => !s)}
               disabled={!hasThinkingContent}

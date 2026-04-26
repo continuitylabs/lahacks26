@@ -2,8 +2,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Platform } from 'react-native';
 
+import { GlassButton } from '@/components/glass-button';
 import { GlassCard } from '@/components/glass-card';
-import { Pressable, Text, View } from '@/src/tw';
+import { Text, View } from '@/src/tw';
 
 const SERIF =
   Platform.OS === 'ios'
@@ -25,8 +26,8 @@ const C = {
   text: '#F5EFE4',
   muted: 'rgba(245,239,228,0.7)',
   faint: 'rgba(245,239,228,0.4)',
-  star: '#F0B86E',
-  starDeep: '#C98A3F',
+  star: '#2D7A4F',
+  starDeep: '#1A5535',
   edge: 'rgba(255,255,255,0.18)',
   glass: 'rgba(255,255,255,0.08)',
   void: '#0b0e12',
@@ -46,7 +47,7 @@ export default function ReportIncident() {
         style={{
           flex: 1,
           paddingHorizontal: 24,
-          paddingTop: 64,
+          paddingTop: 20,
           paddingBottom: 40,
         }}
       >
@@ -54,39 +55,38 @@ export default function ReportIncident() {
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            justifyContent: 'flex-end',
           }}
         >
-          <Text
-            selectable={false}
-            style={{
-              fontSize: 11,
-              letterSpacing: 3,
-              color: C.faint,
-              fontFamily: MONO,
-            }}
-          >
-            INCIDENT REPORT
-          </Text>
-          <Pressable
+          <GlassButton
             onPress={() => router.back()}
-            style={{
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: C.edge,
-              backgroundColor: C.glass,
-              paddingHorizontal: 12,
-              paddingVertical: 4,
+            tintColor={C.star}
+            style={{ borderRadius: 18 }}
+            pressableStyle={{
+              width: 36,
+              height: 36,
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            <Text style={{ fontSize: 12, color: C.muted }}>Cancel</Text>
-          </Pressable>
+            <Text
+              selectable={false}
+              style={{ color: C.text, fontSize: 18, lineHeight: 18 }}
+            >
+              ×
+            </Text>
+          </GlassButton>
         </View>
 
         <View style={{ marginTop: 40, gap: 8 }}>
           <Text
             selectable={false}
-            style={{ fontFamily: SERIF, fontSize: 36, color: C.text, lineHeight: 42 }}
+            style={{
+              fontFamily: SERIF,
+              fontSize: 36,
+              color: C.text,
+              lineHeight: 42,
+            }}
           >
             Are you okay?
           </Text>
@@ -94,8 +94,7 @@ export default function ReportIncident() {
             selectable={false}
             style={{ fontSize: 16, lineHeight: 24, color: C.muted }}
           >
-            Tell Northstar what happened. The next steps run on-device — no
-            signal required.
+            Tell Northstar what happened.
           </Text>
         </View>
 
@@ -122,51 +121,27 @@ export default function ReportIncident() {
 
         <View style={{ flex: 1 }} />
 
-        <Pressable
-          onPress={() => {
-            router.replace('/triage');
-          }}
-          style={({ pressed }) => ({
-            borderRadius: 999,
-            borderCurve: 'continuous',
-            backgroundColor: C.star,
-            paddingHorizontal: 32,
-            paddingVertical: 18,
-            opacity: pressed ? 0.8 : 1,
-            shadowColor: C.star,
-            shadowOpacity: 0.4,
-            shadowRadius: 16,
-            shadowOffset: { width: 0, height: 0 },
-          })}
+        <GlassButton
+          onPress={() => router.replace('/triage')}
+          tintColor={C.star}
+          style={{ borderRadius: 999, borderCurve: 'continuous' }}
         >
-          <Text
-            selectable={false}
-            style={{
-              textAlign: 'center',
-              fontFamily: SANS,
-              fontSize: 16,
-              fontWeight: '700',
-              letterSpacing: 2.5,
-              color: C.void,
-            }}
-          >
-            BEGIN TRIAGE
-          </Text>
-        </Pressable>
-
-        <Text
-          selectable={false}
-          style={{
-            marginTop: 12,
-            textAlign: 'center',
-            fontSize: 10,
-            letterSpacing: 3.6,
-            color: C.faint,
-            fontFamily: MONO,
-          }}
-        >
-          ON-DEVICE  •  OFFLINE-CAPABLE
-        </Text>
+          <View style={{ paddingHorizontal: 32, paddingVertical: 18 }}>
+            <Text
+              selectable={false}
+              style={{
+                textAlign: 'center',
+                fontFamily: SANS,
+                fontSize: 16,
+                fontWeight: '700',
+                letterSpacing: 2.5,
+                color: C.text,
+              }}
+            >
+              BEGIN TRIAGE
+            </Text>
+          </View>
+        </GlassButton>
       </View>
     </View>
   );
@@ -199,21 +174,6 @@ function Step({
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text style={{ fontFamily: SERIF, fontSize: 18, color: C.text }}>
             {title}
-          </Text>
-          <Text
-            style={{
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: C.starDeep,
-              paddingHorizontal: 8,
-              paddingVertical: 2,
-              fontSize: 9,
-              letterSpacing: 2,
-              color: C.star,
-              fontFamily: MONO,
-            }}
-          >
-            {chip}
           </Text>
         </View>
         <Text
