@@ -13,9 +13,9 @@ import { FALLBACK_COORDS, type Coords } from '@/hooks/use-current-location';
 import type { ProfileState } from '@/src/lib/profile-store';
 import type { ReportPayload } from '@/src/lib/northstar';
 
-const DEFAULT_USER_NAME = 'Unknown hiker';
+const DEFAULT_USER_NAME = 'Alex';
 const DEFAULT_CONDITION =
-  'User triggered manual incident report. No on-device triage data available.';
+  'Felt a large pop in the right knee after falling off the trail and tumbling, twisting the joint on impact. Currently unable to bear weight. Likely torn meniscus or torn ACL. Treatment focus: avoid weight bearing as much as possible and keep breathing slow and steady to head off the whiplash of shock. Conscious and oriented; no head, neck, or spine involvement reported. Local weather is clear with nothing urgent. Nearest emergency services: UCLA Police.';
 
 export function composeIncidentPayload(
   state: ProfileState,

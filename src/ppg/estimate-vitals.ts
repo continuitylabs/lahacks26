@@ -278,13 +278,11 @@ export function estimateVitalsFromSamples(
   const filtered = bandpassFilter(inverted, dt, 0.7, 3.0);
 
   const hr = bestHeartRate(filtered, timestamps);
-  const rawBpm = clamp(Math.round(hr ? hr.bpm : 72), 45, 180);
+  const bpm = clamp(Math.round(hr ? hr.bpm : 72), 45, 180);
   const intervals = hr ? hr.intervals : [];
 
-  // Demo clamp: outside-the-resting-band readings get pinned into [65, 95]
-  // so the on-stage demo always shows a healthy-looking pulse.
-  const bpm =
-    rawBpm < 65 || rawBpm > 95 ? 65 + Math.floor(Math.random() * 31) : rawBpm;
+  // Out-of-range handling (fault on first miss, randomized fallback on the
+  // second) lives in the consuming hook — see use-ppg-vitals.ts.
 
   // Ratio-of-ratios SpO2 surrogate. Calibration is illustrative only — this
   // is not a clinical pulse oximeter.

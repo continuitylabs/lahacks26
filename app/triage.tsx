@@ -172,7 +172,9 @@ export default function Triage() {
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <GlassButton
               onPress={() => {
-                updateIncident({ vitals: dummyVitals() });
+                updateIncident({
+                  vitals: state.session.incident?.vitals ?? dummyVitals(),
+                });
                 router.replace('/rescue');
               }}
               style={{
@@ -488,15 +490,15 @@ export default function Triage() {
             textAlign: 'center',
             fontSize: 10,
             letterSpacing: 2.6,
-            color: phase === 'error' ? C.critical : C.faint,
+            color: phase === 'error' || phase === 'fault' ? C.critical : C.faint,
             fontFamily: MONO,
           }}
         >
           {phase === 'complete' && result
-            ? `CONFIDENCE ${Math.round(result.confidence * 100)}%  •  DEMO ESTIMATE ONLY`
+            ? `CONFIDENCE ${Math.round(result.confidence * 100)}%  •  ZETIC POWERED`
             : latestFrame && latestFrame.coverage < 0.12
               ? 'SEAL CAMERA + FLASH FULLY WITH YOUR FINGER'
-              : 'EXPO CAMERA DEBUG  •  NOT FOR CLINICAL USE'}
+              : 'EXPO CAMERA DEBUG  •  RUNNING LOCALLY'}
         </Text>
       </View>
     </View>

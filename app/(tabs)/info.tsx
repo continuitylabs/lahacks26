@@ -128,7 +128,7 @@ export default function Info() {
             fontFamily: MONO,
           }}
         >
-          ✦  v0.1 — DEMO BUILD
+          ✦  v0.1 — ZETIC · FETCH.AI POWERED
         </Text>
       </ScrollView>
     </View>

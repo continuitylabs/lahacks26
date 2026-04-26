@@ -16,6 +16,7 @@ import { GlassCard } from '@/components/glass-card';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { composeIncidentPayload } from '@/src/lib/compose-incident-payload';
 import {
+  dummyAgentReport,
   dummyCoords,
   dummyTriage,
   dummyVitals,
@@ -86,19 +87,40 @@ export default function Rescue() {
   const incident = state.session.incident;
   const agentAbortRef = useRef<AbortController | null>(null);
   const mountedAt = useRef(Date.now());
+  const advanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const advance = (opts: { immediate?: boolean; tail?: number } = {}) => {
     if (advanced.current) return;
-    advanced.current = true;
+
     if (opts.immediate) {
+      if (advanceTimeoutRef.current) {
+        clearTimeout(advanceTimeoutRef.current);
+        advanceTimeoutRef.current = null;
+      }
+      advanced.current = true;
       router.replace('/call');
       return;
     }
+
+    // A scheduled advance is already in flight — don't stack a second timer.
+    if (advanceTimeoutRef.current) return;
+
     const elapsed = Date.now() - mountedAt.current;
     const tail = opts.tail ?? 0;
     const wait = Math.max(tail, MIN_DWELL_MS - elapsed);
-    setTimeout(() => router.replace('/call'), wait);
+    advanceTimeoutRef.current = setTimeout(() => {
+      advanceTimeoutRef.current = null;
+      advanced.current = true;
+      router.replace('/call');
+    }, wait);
   };
+
+  useEffect(() => () => {
+    if (advanceTimeoutRef.current) {
+      clearTimeout(advanceTimeoutRef.current);
+      advanceTimeoutRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!ready || fired.current) return;
@@ -192,21 +214,7 @@ export default function Rescue() {
             ? { latitude: location.coords.latitude, longitude: location.coords.longitude }
             : null
         ),
-      agentReport: {
-        markdown: '',
-        timedOut: true,
-        caseId: null,
-        rescueScript: null,
-        extractionRecommendation: null,
-        agentSeverity: null,
-        locationSummary: null,
-        weatherSummary: null,
-        weatherUrgencyModifier: null,
-        nextStepsHeader: null,
-        nextSteps: [],
-        degradedAgents: [],
-        capturedAt: Date.now(),
-      },
+      agentReport: incident?.agentReport ?? dummyAgentReport(),
     });
     advance({ immediate: true });
   };
@@ -316,10 +324,7 @@ export default function Rescue() {
 
           {agentPhase.kind === 'error' || agentPhase.kind === 'success' ? (
             <GlassButton
-              onPress={() => {
-                advanced.current = false;
-                advance({ immediate: true });
-              }}
+              onPress={() => advance({ immediate: true })}
               tintColor={agentPhase.kind === 'error' ? C.star : undefined}
               style={{
                 marginTop: 8,
