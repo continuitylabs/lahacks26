@@ -39,21 +39,26 @@ export function composeIncidentPayload(
         ? { latitude: session.lastCoords.latitude, longitude: session.lastCoords.longitude }
         : FALLBACK_COORDS);
 
-  // Same priority for vitals: prefer the active incident snapshot.
-  const lastVitals = session.lastVitals;
-  const heartRateBpm = incident?.vitals?.heartRate ?? lastVitals?.heartRate;
-  const spo2 = incident?.vitals?.spo2 ?? lastVitals?.spo2;
-  const vitalsConfidence =
-    incident?.vitals?.confidence ?? lastVitals?.confidence;
+  // Vitals: prefer the active incident snapshot, fall back to last session reading.
+  const incidentVitals = incident?.vitals ?? null;
+  const sessionVitals = session.lastVitals;
+  const heartRateBpm = incidentVitals?.heartRate ?? sessionVitals?.heartRate;
+  const spo2 = incidentVitals?.spo2 ?? sessionVitals?.spo2;
+  const vitalsConfidence = incidentVitals?.confidence ?? sessionVitals?.confidence;
 
   const baseSummary =
     incident?.triage?.summary?.trim() ||
     session.lastTriageReport?.summary?.trim() ||
     DEFAULT_CONDITION;
   const notes = profile.medicalNotes.trim();
-  const conditionSummary = notes
-    ? `${baseSummary}\n\nMedical baseline: ${notes}`
-    : baseSummary;
+  const personalPhone = profile.personalPhone?.trim() ?? '';
+
+  // Build conditionSummary as the authoritative narrative for Claude prompts.
+  // Append structured context that may not have dedicated payload fields yet.
+  const summaryParts: string[] = [baseSummary];
+  if (notes) summaryParts.push(`Medical baseline: ${notes}`);
+  if (personalPhone) summaryParts.push(`Hiker callback number: ${personalPhone}`);
+  const conditionSummary = summaryParts.join('\n\n');
 
   const ec = profile.emergencyContact;
   const ecName = ec.name.trim();
@@ -63,9 +68,23 @@ export function composeIncidentPayload(
   else if (ecName) emergencyContact = ecName;
   else emergencyContact = undefined;
 
+  console.log('[composeIncidentPayload]', {
+    userName,
+    age: profile.age,
+    coords: { latitude: coords.latitude, longitude: coords.longitude },
+    heartRateBpm,
+    spo2,
+    triageSummary: incident?.triage?.summary?.slice(0, 80),
+    triageFindings: incident?.triage?.findings,
+    transcriptTurns: incident?.triage?.transcript?.length ?? 0,
+    personalPhone: personalPhone || '(none)',
+    emergencyContact,
+  });
+
   return {
     userName,
     age: profile.age,
+    personalPhone: personalPhone || undefined,
     latitude: coords.latitude,
     longitude: coords.longitude,
     conditionSummary,
@@ -74,10 +93,8 @@ export function composeIncidentPayload(
     triageFindings: incident?.triage?.findings ?? [],
     heartRateBpm,
     spo2,
-    confidence: incident?.vitals?.confidence ?? session.lastVitals?.confidence,
+    confidence: vitalsConfidence,
     medicalNotes: notes || undefined,
-    systolic: lastVitals?.systolic,
-    diastolic: lastVitals?.diastolic,
     vitalsConfidence,
     emergencyContact,
     placeCall: false,

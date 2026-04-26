@@ -14,7 +14,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = '@northstar/profile-state-v1';
-const CURRENT_SCHEMA_VERSION = 3 as const;
+const CURRENT_SCHEMA_VERSION = 4 as const;
 
 export type EmergencyContact = {
   name: string;
@@ -24,6 +24,8 @@ export type EmergencyContact = {
 export type Profile = {
   userName: string;
   age: number | null;
+  /** The hiker's own phone number — given to dispatch as a callback number. */
+  personalPhone: string;
   emergencyContact: EmergencyContact;
   medicalNotes: string;
 };
@@ -159,6 +161,7 @@ export type ProfileState = {
 export const DEFAULT_PROFILE: Profile = {
   userName: '',
   age: null,
+  personalPhone: '',
   emergencyContact: { name: '', phone: '' },
   medicalNotes: '',
 };
@@ -198,8 +201,17 @@ function migrate(raw: unknown): ProfileState {
 
   if (version > CURRENT_SCHEMA_VERSION) return DEFAULT_STATE;
 
+  if (version === 3) {
+    // v3 → v4: profile gains `personalPhone`.
+    return {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      profile: { ...DEFAULT_PROFILE, ...((obj.profile as Partial<Profile>) ?? {}) } as Profile,
+      session: { ...DEFAULT_SESSION, ...((obj.session as Partial<Session>) ?? {}) } as Session,
+    };
+  }
+
   if (version === 2) {
-    // v2 → v3: triage gains `transcript`; agentReport gains nextSteps + weather/location summaries.
+    // v2 → v4: triage gains `transcript`; agentReport gains nextSteps + weather/location summaries; profile gains `personalPhone`.
     const session = (obj.session as Partial<Session>) ?? {};
     const incident = session.incident ?? null;
     const migratedIncident = incident

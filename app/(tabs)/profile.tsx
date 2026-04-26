@@ -232,13 +232,15 @@ function IdentityCard() {
 
   const [name, setName] = useState(profile.userName);
   const [age, setAge] = useState(profile.age == null ? '' : String(profile.age));
+  const [phone, setPhone] = useState(profile.personalPhone ?? '');
 
   // Re-sync local fields if the store hydrates after first paint, or if
   // another writer changes them.
   useEffect(() => {
     setName(profile.userName);
     setAge(profile.age == null ? '' : String(profile.age));
-  }, [profile.userName, profile.age]);
+    setPhone(profile.personalPhone ?? '');
+  }, [profile.userName, profile.age, profile.personalPhone]);
 
   const commitName = () => {
     const next = name.trim();
@@ -255,6 +257,14 @@ function IdentityCard() {
     pulse.trigger();
   };
 
+  const commitPhone = () => {
+    const next = sanitizePhone(phone);
+    if (next === profile.personalPhone) return;
+    setPhone(next);
+    setProfile({ personalPhone: next });
+    pulse.trigger();
+  };
+
   // Latest-closure ref ladder: the unmount effect's empty-deps cleanup
   // must call the *current* commit closures (so it sees the latest input
   // values), not the ones captured at first render. Each commit function
@@ -262,15 +272,20 @@ function IdentityCard() {
   // strict-mode double-invoke and tab-change cleanups stay quiet.
   const commitNameRef = useRef(commitName);
   const commitAgeRef = useRef(commitAge);
+  const commitPhoneRef = useRef(commitPhone);
   commitNameRef.current = commitName;
   commitAgeRef.current = commitAge;
+  commitPhoneRef.current = commitPhone;
   useEffect(
     () => () => {
       commitNameRef.current();
       commitAgeRef.current();
+      commitPhoneRef.current();
     },
     []
   );
+
+  const phoneInvalid = phone.length > 0 && phoneDigitCount(phone) < PHONE_MIN_DIGITS;
 
   if (!loaded) return <SkeletonCard />;
 
@@ -298,6 +313,17 @@ function IdentityCard() {
           placeholder="—"
           keyboardType="number-pad"
           maxLength={3}
+        />
+      </View>
+      <View>
+        <FieldLabel>YOUR PHONE NUMBER</FieldLabel>
+        <Input
+          value={phone}
+          onChangeText={setPhone}
+          onBlur={commitPhone}
+          placeholder="+1 555 555 5555"
+          keyboardType="phone-pad"
+          invalid={phoneInvalid}
         />
       </View>
     </GlassCard>

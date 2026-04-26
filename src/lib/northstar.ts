@@ -25,6 +25,8 @@ export type TranscriptTurn = { role: 'user' | 'assistant'; text: string };
 export type ReportPayload = {
   userName: string;
   age?: number | null;
+  /** Hiker's own phone number — given to dispatch as a callback number. */
+  personalPhone?: string;
   latitude: number;
   longitude: number;
   conditionSummary: string;
@@ -59,6 +61,7 @@ export async function reportIncident(
     body: JSON.stringify({
       user_name: p.userName,
       age: p.age,
+      personal_phone: p.personalPhone,
       latitude: p.latitude,
       longitude: p.longitude,
       condition_summary: p.conditionSummary,

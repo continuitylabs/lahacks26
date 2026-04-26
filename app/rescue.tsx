@@ -76,7 +76,7 @@ const NORTHSTAR_URL =
 export default function Rescue() {
   const router = useRouter();
   const location = useCurrentLocation();
-  const { state, loaded, updateIncident, updateSession } = useProfileState();
+  const { state, loaded, updateIncident } = useProfileState();
   const [agentPhase, setAgentPhase] = useState<AgentPhase>({ kind: 'idle' });
   const fired = useRef(false);
   const advanced = useRef(false);
@@ -116,6 +116,7 @@ export default function Rescue() {
     reportIncident(payload, { signal: controller.signal })
       .then((result) => {
         clearTimeout(timer);
+        console.log('[NorthstarAgent] markdown response:\n', result.markdown);
         setAgentPhase({
           kind: 'success',
           markdown: result.markdown,
@@ -123,6 +124,17 @@ export default function Rescue() {
         });
 
         const parsed = parseAgentReport(result.markdown);
+        console.log('[NorthstarAgent] parsed fields:', {
+          rescueScript: parsed.rescueScript?.slice(0, 120),
+          agentSeverity: parsed.agentSeverity,
+          nextSteps: parsed.nextSteps.length,
+          nextStepsHeader: parsed.nextStepsHeader,
+          locationSummary: parsed.locationSummary?.slice(0, 80),
+          weatherUrgencyModifier: parsed.weatherUrgencyModifier,
+          degradedAgents: parsed.degradedAgents,
+        });
+        // Single atomic write — avoids a race where a separate updateSession
+        // call reads stale state and overwrites the agentReport we just set.
         updateIncident({
           agentReport: {
             markdown: result.markdown,
@@ -138,9 +150,6 @@ export default function Rescue() {
             degradedAgents: parsed.degradedAgents,
             capturedAt: Date.now(),
           },
-        });
-        updateSession({
-          lastReportMarkdown: { markdown: result.markdown, capturedAt: Date.now() },
         });
         advance({ tail: SUCCESS_TAIL_MS });
       })
@@ -167,7 +176,7 @@ export default function Rescue() {
         // Don't auto-advance on error — let the user read the diagnostic
         // panel and tap "Continue anyway" when ready.
       });
-  }, [ready, state, location.status, location.coords, updateIncident, updateSession]);
+  }, [ready, state, location.status, location.coords, updateIncident]);
 
   const skip = () => {
     agentAbortRef.current?.abort();
@@ -446,6 +455,7 @@ function AgentRow({
 }
 
 function DiagnosticsCard({ phase }: { phase: AgentPhase }) {
+  const [showMarkdown, setShowMarkdown] = useState(false);
   const lines: { label: string; value: string }[] = [
     { label: 'POST', value: `${NORTHSTAR_URL}/report` },
     { label: 'STATE', value: phase.kind.toUpperCase() },
@@ -506,6 +516,39 @@ function DiagnosticsCard({ phase }: { phase: AgentPhase }) {
           </Text>
         </View>
       ))}
+      {phase.kind === 'success' && phase.markdown.length > 0 && (
+        <>
+          <Pressable
+            onPress={() => setShowMarkdown((v) => !v)}
+            style={{ marginTop: 6, alignSelf: 'flex-start' }}
+          >
+            <Text
+              style={{
+                fontFamily: MONO,
+                color: C.star,
+                fontSize: 10,
+                letterSpacing: 1.4,
+              }}
+            >
+              {showMarkdown ? 'HIDE MARKDOWN ▲' : 'VIEW MARKDOWN ▼'}
+            </Text>
+          </Pressable>
+          {showMarkdown && (
+            <Text
+              selectable
+              style={{
+                marginTop: 8,
+                fontFamily: MONO,
+                color: C.muted,
+                fontSize: 10,
+                lineHeight: 15,
+              }}
+            >
+              {phase.markdown}
+            </Text>
+          )}
+        </>
+      )}
     </GlassCard>
   );
 }
