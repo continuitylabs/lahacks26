@@ -1,8 +1,9 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Platform } from 'react-native';
+import { Platform, ScrollView } from 'react-native';
 
 import { GlassCard } from '@/components/glass-card';
+import { useProfileState } from '@/src/lib/profile-store-provider';
 import { Pressable, Text, View } from '@/src/tw';
 
 const SERIF =
@@ -30,10 +31,36 @@ const C = {
   edge: 'rgba(255,255,255,0.18)',
   glass: 'rgba(255,255,255,0.08)',
   void: '#0b0e12',
+  warn: '#E5484D',
 };
+
+const FALLBACK_HEADER = 'Stay put. Stay calm.';
+const FALLBACK_CARDS: { title: string; body: string }[] = [
+  {
+    title: 'What to do right now',
+    body: 'Avoid moving the injured area. Sit on something insulating to stay warm.',
+  },
+  {
+    title: 'Conserve resources',
+    body: 'Lower your phone brightness. Stay reachable for the dispatcher callback.',
+  },
+  {
+    title: 'If conditions change',
+    body: 'Note any worsening pain, breathing, or bleeding so you can relay it next call.',
+  },
+];
 
 export default function Instructions() {
   const router = useRouter();
+  const { state } = useProfileState();
+  const report = state.session.incident?.agentReport ?? null;
+
+  const header = report?.nextStepsHeader || FALLBACK_HEADER;
+  const cards = report?.nextSteps && report.nextSteps.length > 0
+    ? report.nextSteps
+    : FALLBACK_CARDS;
+  const isFallback = !report?.nextSteps || report.nextSteps.length === 0;
+  const degraded = report?.degradedAgents ?? [];
 
   return (
     <View style={{ flex: 1, backgroundColor: C.void }}>
@@ -67,33 +94,45 @@ export default function Instructions() {
             selectable={false}
             style={{ fontFamily: SERIF, fontSize: 36, color: C.text, lineHeight: 42 }}
           >
-            Stay put. Stay calm.
+            {header}
           </Text>
-          <Text
-            selectable={false}
-            style={{ fontSize: 15, lineHeight: 22, color: C.muted }}
-          >
-            (Placeholder) Step-by-step first-aid and stay-safe guidance will
-            appear here based on triage severity.
-          </Text>
+          {isFallback ? (
+            <Text
+              selectable={false}
+              style={{
+                fontSize: 11,
+                letterSpacing: 1.6,
+                fontFamily: MONO,
+                color: C.warn,
+              }}
+            >
+              AGENT NETWORK OFFLINE — GENERIC GUIDANCE
+            </Text>
+          ) : null}
+          {degraded.length > 0 ? (
+            <Text
+              selectable={false}
+              style={{
+                fontSize: 11,
+                letterSpacing: 1.6,
+                fontFamily: MONO,
+                color: C.warn,
+              }}
+            >
+              {degraded.length} OF 4 AGENTS OFFLINE
+            </Text>
+          ) : null}
         </View>
 
-        <View style={{ marginTop: 28, gap: 12 }}>
-          <PlaceholderCard
-            title="What to do right now"
-            body="Specific first-aid steps for the detected injury will be rendered here."
-          />
-          <PlaceholderCard
-            title="Conserve resources"
-            body="Battery, signal, and warmth guidance — tailored to the environment."
-          />
-          <PlaceholderCard
-            title="If conditions change"
-            body="When and how to escalate or re-trigger triage."
-          />
-        </View>
-
-        <View style={{ flex: 1 }} />
+        <ScrollView
+          style={{ flex: 1, marginTop: 28 }}
+          contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {cards.map((c, idx) => (
+            <NextStepCard key={`${idx}-${c.title}`} title={c.title} body={c.body} />
+          ))}
+        </ScrollView>
 
         <Pressable
           onPress={() => router.dismissAll()}
@@ -124,7 +163,7 @@ export default function Instructions() {
   );
 }
 
-function PlaceholderCard({ title, body }: { title: string; body: string }) {
+function NextStepCard({ title, body }: { title: string; body: string }) {
   return (
     <GlassCard
       style={{
