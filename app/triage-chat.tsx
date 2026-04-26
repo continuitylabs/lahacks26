@@ -2,7 +2,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView as RNScrollView,
@@ -10,20 +9,17 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlassButton } from '@/components/glass-button';
-import { GlassCard } from '@/components/glass-card';
+import { useSpeechOutput } from '@/hooks/use-speech-output';
+import { useVoiceInput } from '@/hooks/use-voice-input';
 import { useZeticChat } from '@/hooks/use-zetic-chat';
 import { useProfileState } from '@/src/lib/profile-store-provider';
-import { Pressable, Text, TextInput, View } from '@/src/tw';
+import { Text, TextInput, View } from '@/src/tw';
 
-const SERIF =
-  Platform.OS === 'ios'
-    ? 'Georgia'
-    : Platform.OS === 'android'
-      ? 'serif'
-      : "Georgia, 'Times New Roman', serif";
+const MONO: string | undefined = undefined;
 
 const C = {
   text: '#F5EFE4',
+  muted: 'rgba(245,239,228,0.7)',
   faint: 'rgba(245,239,228,0.4)',
   star: '#2D7A4F',
   starDeep: '#1A5535',
@@ -67,6 +63,16 @@ export default function TriageChat() {
   const [input, setInput] = useState('');
   const scrollRef = useRef<RNScrollView | null>(null);
 
+  const speech = useSpeechOutput();
+  const voice = useVoiceInput({
+    silenceMs: 2500,
+    onPartial: (text) => setInput(text),
+    onFinal: (text) => {
+      setInput('');
+      send(text);
+    },
+  });
+
   // Bootstrap an incident if we got here without one (deep link / hot reload).
   useEffect(() => {
     if (!state.session.incident) {
@@ -87,6 +93,59 @@ export default function TriageChat() {
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [messages.length, stream]);
+
+  const ready = status.kind === 'ready';
+  const isListening =
+    voice.state === 'listening' || voice.state === 'requesting';
+  const canVoice = ready && !isGenerating;
+
+  // Stable refs to hook methods so effect deps don't churn each render.
+  const voiceCancel = voice.cancel;
+  const voiceStart = voice.start;
+  const speechSpeak = speech.speak;
+
+  // Force the mic shut the moment a generation begins. Prevents the model's
+  // own TTS from being transcribed into the next prompt.
+  useEffect(() => {
+    if (isGenerating) voiceCancel();
+  }, [isGenerating, voiceCancel]);
+
+  // Speak each freshly finalised assistant turn (including the seeded opener).
+  const lastSpokenIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isGenerating) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return;
+    if (lastSpokenIdRef.current === last.id) return;
+    lastSpokenIdRef.current = last.id;
+    speechSpeak(last.text);
+  }, [messages, isGenerating, speechSpeak]);
+
+  // Auto-advance: open the mic only once TTS has finished playing. The
+  // completionTick ticks on `onDone`, never on stop/error.
+  const lastTickRef = useRef(speech.completionTick);
+  useEffect(() => {
+    if (speech.completionTick === lastTickRef.current) return;
+    lastTickRef.current = speech.completionTick;
+    if (ready && !isGenerating && !isListening && speech.enabled) {
+      voiceStart();
+    }
+  }, [
+    speech.completionTick,
+    speech.enabled,
+    ready,
+    isGenerating,
+    isListening,
+    voiceStart,
+  ]);
+
+  const toggleVoice = useCallback(() => {
+    if (isListening) {
+      voice.stop();
+    } else {
+      voice.start();
+    }
+  }, [isListening, voice]);
 
   // Count assistant replies that follow at least one user message. The seeded
   // opener is ignored (no preceding user turn). Whenever this count finalises
@@ -202,6 +261,38 @@ export default function TriageChat() {
             </Text>
           </GlassButton>
 
+          <GlassButton
+            onPress={speech.toggleEnabled}
+            tintColor={speech.isSpeaking ? C.star : undefined}
+            style={{
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: speech.isSpeaking ? C.star : C.edge,
+            }}
+          >
+            <View style={{ paddingHorizontal: 10, paddingVertical: 6 }}>
+              <Text
+                selectable={false}
+                style={{
+                  fontFamily: MONO,
+                  color: speech.enabled
+                    ? speech.isSpeaking
+                      ? C.star
+                      : C.muted
+                    : C.faint,
+                  fontSize: 10,
+                  letterSpacing: 2,
+                }}
+              >
+                {speech.enabled
+                  ? speech.isSpeaking
+                    ? 'SPEAKING'
+                    : 'VOICE'
+                  : 'MUTED'}
+              </Text>
+            </View>
+          </GlassButton>
+
           <ProgressMeter
             filled={Math.min(assistantRepliesAfterUser, TARGET_REPLIES)}
             total={TARGET_REPLIES}
@@ -267,16 +358,36 @@ export default function TriageChat() {
         <View
           style={{
             paddingHorizontal: 20,
-            paddingBottom: Math.max(insets.bottom, 16),
             paddingTop: 8,
-            flexDirection: 'row',
-            alignItems: 'flex-end',
+            paddingBottom: Math.max(insets.bottom, 16),
             gap: 8,
           }}
         >
-          <GlassCard
+          {voice.state === 'error' && voice.error ? (
+            <Text
+              selectable={false}
+              style={{
+                fontFamily: MONO,
+                color: '#E5484D',
+                fontSize: 10,
+                letterSpacing: 1.6,
+                paddingHorizontal: 4,
+              }}
+            >
+              {voice.error.message}
+            </Text>
+          ) : null}
+
+          <View
             style={{
-              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'flex-end',
+              gap: 8,
+              borderRadius: 24,
+              borderCurve: 'continuous',
+              borderWidth: 1,
+              borderColor: isListening ? C.star : C.edge,
+              backgroundColor: C.glass,
               paddingHorizontal: 14,
               paddingVertical: 10,
             }}
@@ -284,51 +395,124 @@ export default function TriageChat() {
             <TextInput
               value={input}
               onChangeText={setInput}
-              placeholder="Type your reply…"
+              placeholder={
+                isListening
+                  ? 'Listening…'
+                  : ready
+                    ? 'Type or speak your reply…'
+                    : 'Loading model…'
+              }
               placeholderTextColor={C.faint}
+              editable={ready && !isGenerating && !isListening}
+              multiline
               style={{
+                flex: 1,
                 color: C.text,
                 fontSize: 16,
-                minHeight: 24,
-                maxHeight: 96,
+                maxHeight: 120,
+                paddingVertical: 4,
               }}
-              multiline
-              editable={status.kind === 'ready' && !isGenerating}
-              onSubmitEditing={onSubmit}
-              blurOnSubmit
-              returnKeyType="send"
             />
-          </GlassCard>
 
-          <Pressable
-            onPress={onSubmit}
-            disabled={!canSend}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: C.star,
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: canSend ? 1 : 0.4,
-            }}
-          >
-            {isGenerating ? (
-              <ActivityIndicator color={C.text} />
-            ) : (
-              <Text
+            {!isGenerating ? (
+              <GlassButton
+                onPress={toggleVoice}
+                disabled={!canVoice && !isListening}
+                tintColor={isListening ? C.star : undefined}
                 style={{
-                  color: C.text,
-                  fontSize: 18,
-                  fontFamily: SERIF,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: isListening ? C.star : C.edge,
+                }}
+                pressableStyle={{
+                  width: 36,
+                  height: 36,
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
-                ↑
-              </Text>
+                <MicGlyph color={isListening ? C.void : C.muted} />
+              </GlassButton>
+            ) : null}
+
+            {isGenerating ? (
+              <GlassButton
+                onPress={stop}
+                tintColor="#E5484D"
+                style={{ borderRadius: 18 }}
+                pressableStyle={{
+                  width: 36,
+                  height: 36,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <View
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 2,
+                    backgroundColor: C.text,
+                  }}
+                />
+              </GlassButton>
+            ) : (
+              <GlassButton
+                onPress={onSubmit}
+                disabled={!canSend}
+                tintColor={C.star}
+                style={{ borderRadius: 18 }}
+                pressableStyle={{
+                  width: 36,
+                  height: 36,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text
+                  selectable={false}
+                  style={{ color: C.text, fontSize: 18, lineHeight: 18 }}
+                >
+                  ↑
+                </Text>
+              </GlassButton>
             )}
-          </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
+    </View>
+  );
+}
+
+function MicGlyph({ color }: { color: string }) {
+  return (
+    <View style={{ width: 14, height: 18, alignItems: 'center' }}>
+      <View
+        style={{
+          width: 8,
+          height: 11,
+          borderRadius: 4,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          marginTop: 2,
+          width: 12,
+          height: 1.5,
+          borderRadius: 1,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          marginTop: 1,
+          width: 6,
+          height: 1.5,
+          borderRadius: 1,
+          backgroundColor: color,
+        }}
+      />
     </View>
   );
 }
