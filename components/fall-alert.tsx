@@ -32,6 +32,7 @@ const C = {
 
 export type FallAlertProps = {
   visible: boolean;
+  source?: 'fall' | 'acoustic';
   /** Default 15. */
   countdownSeconds?: number;
   /** Tapped "I'M OK". */
@@ -42,6 +43,7 @@ export type FallAlertProps = {
 
 export function FallAlert({
   visible,
+  source = 'fall',
   countdownSeconds = 15,
   onDismiss,
   onConfirm,
@@ -122,6 +124,13 @@ export function FallAlert({
 
   if (!visible) return null;
 
+  const eyebrow = source === 'acoustic' ? 'DISTRESS SOUND DETECTED' : 'IMPACT DETECTED';
+  const headline = source === 'acoustic' ? 'Do you need help?' : 'Are you okay?';
+  const body =
+    source === 'acoustic'
+      ? "We heard a scream, shout, or loud whistle nearby. If this wasn't an emergency, tap I'm OK. We'll route to triage when the timer runs out."
+      : "If this was nothing, tap I'm OK. We'll route to triage when the timer runs out.";
+
   return (
     <Animated.View
       pointerEvents="auto"
@@ -152,7 +161,7 @@ export function FallAlert({
             fontFamily: MONO,
           }}
         >
-          IMPACT DETECTED
+          {eyebrow}
         </Text>
         <Text
           selectable={false}
@@ -163,7 +172,7 @@ export function FallAlert({
             color: C.text,
           }}
         >
-          Are you okay?
+          {headline}
         </Text>
         <Text
           selectable={false}
@@ -173,8 +182,7 @@ export function FallAlert({
             lineHeight: 22,
           }}
         >
-          If this was nothing, tap I'm OK. We'll route to triage when the
-          timer runs out.
+          {body}
         </Text>
       </View>
 
@@ -252,7 +260,7 @@ export function FallAlert({
               letterSpacing: 2,
             }}
           >
-            I'M OK
+            I&apos;M OK
           </Text>
         </Pressable>
         <Pressable
