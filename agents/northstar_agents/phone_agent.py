@@ -37,21 +37,24 @@ from . import config
 # ── REST schemas ───────────────────────────────────────────────────────────
 
 
-class ReportRequest(Model):
-    """Structured device data the Expo app POSTs to /report.
+class TranscriptTurnIn(Model):
+    role: str  # "user" | "assistant"
+    text: str
 
-    Every field except latitude/longitude is dummy-now / real-later. On-
-    device triage (Zetic Melange) will eventually populate
-    condition_summary; Apple Health / Health Connect will populate
-    heart_rate_bpm; a profile screen will populate user_name and
-    emergency_contact.
-    """
+
+class ReportRequest(Model):
+    """Structured device data the Expo app POSTs to /report."""
 
     user_name: str
     latitude: float
     longitude: float
     condition_summary: str
+    triage_transcript: list[TranscriptTurnIn] = []
+    triage_summary: Optional[str] = None
+    triage_findings: list[str] = []
     heart_rate_bpm: Optional[int] = None
+    spo2: Optional[int] = None
+    confidence: Optional[float] = None
     emergency_contact: Optional[str] = None
     place_call: bool = False
 
@@ -102,11 +105,30 @@ _reply_queue: "asyncio.Queue[str]" = asyncio.Queue()
 
 
 def _build_chat_text(req: ReportRequest) -> str:
-    """Compose a chat-protocol prompt from structured fields.
+    """Compose a chat-protocol prompt with a YAML header.
 
-    The Rescue Coordinator's parser reads free-form text, so we format the
-    structured device data into a prompt the parser can read cleanly.
+    The Coordinator's parser reads the YAML block first; ASI:One sees the
+    free-form text below it as the visible message.
     """
+    import yaml
+
+    transcript_payload = [
+        {"role": t.role, "text": t.text} for t in req.triage_transcript
+    ]
+    yaml_payload = {
+        "patient": req.user_name,
+        "gps": {"lat": req.latitude, "lon": req.longitude},
+        "heart_rate_bpm": req.heart_rate_bpm,
+        "spo2": req.spo2,
+        "confidence": req.confidence,
+        "triage_summary": req.triage_summary or "",
+        "triage_findings": req.triage_findings,
+        "triage_transcript": transcript_payload,
+        "emergency_contact": req.emergency_contact,
+        "place_call": req.place_call,
+    }
+    yaml_block = yaml.safe_dump(yaml_payload, sort_keys=False, allow_unicode=True)
+
     lat_dir = "N" if req.latitude >= 0 else "S"
     lon_dir = "E" if req.longitude >= 0 else "W"
     parts: list[str] = []
@@ -122,7 +144,9 @@ def _build_chat_text(req: ReportRequest) -> str:
         parts.append(f"My emergency contact is {req.emergency_contact}.")
     if req.place_call:
         parts.append("Please call now.")
-    return " ".join(parts)
+    free_form = " ".join(parts)
+
+    return f"```yaml\n{yaml_block}```\n\n{free_form}"
 
 
 # ── REST handler ───────────────────────────────────────────────────────────
