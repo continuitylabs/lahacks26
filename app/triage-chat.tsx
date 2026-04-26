@@ -104,7 +104,7 @@ export default function TriageChat() {
   const onClose = useCallback(async () => {
     if (isGenerating) await stop();
     router.replace('/');
-  }, [isGenerating, router]);
+  }, [isGenerating, router, stop]);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.void }}>
