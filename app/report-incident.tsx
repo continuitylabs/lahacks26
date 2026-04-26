@@ -40,7 +40,7 @@ export default function ReportIncident() {
 
   const beginTriage = async () => {
     await startIncident('manual');
-    router.replace('/triage');
+    router.replace('/triage-chat');
   };
 
   return (
@@ -95,7 +95,7 @@ export default function ReportIncident() {
               lineHeight: 42,
             }}
           >
-            Are you okay?
+            The rescue plan.
           </Text>
           <Text
             selectable={false}
