@@ -13,6 +13,7 @@ import { useSpeechOutput } from '@/hooks/use-speech-output';
 import { useVoiceInput } from '@/hooks/use-voice-input';
 import { useZeticChat } from '@/hooks/use-zetic-chat';
 import { dummyTriage } from '@/src/lib/dummy-incident';
+import type { IncidentTriageSlice } from '@/src/lib/profile-store';
 import { useProfileState } from '@/src/lib/profile-store-provider';
 import { Pressable, Text, TextInput, View } from '@/src/tw';
 
@@ -50,7 +51,7 @@ const INTRO_MESSAGE =
 
 export default function ReportIncident() {
   const router = useRouter();
-  const { startIncident, updateIncident } = useProfileState();
+  const { startIncident } = useProfileState();
 
   const {
     status,
@@ -143,22 +144,47 @@ export default function ReportIncident() {
     }
   }, [isListening, voice]);
 
-  const skipTriage = () => {
+  const buildTriageFromChat = useCallback((): IncidentTriageSlice => {
+    // The most recent user message is the cleanest "what happened" string.
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+    const summary = lastAssistant?.text?.trim() || lastUser?.text?.trim() || '';
+    const rawText = messages.map((m) => `${m.role}: ${m.text}`).join('\n').slice(0, 4000);
+
+    // Bag-of-keyword scan for findings — keeps the on-device triage fast while
+    // giving the agent network something structured to reason over.
+    const KEYWORDS = [
+      'bleeding', 'fracture', 'broken', 'sprain', 'laceration',
+      'concussion', 'unconscious', 'head', 'spine', 'ankle', 'wrist',
+      'knee', 'shoulder', 'burn', 'puncture',
+    ];
+    const blob = (lastUser?.text || rawText).toLowerCase();
+    const findings = KEYWORDS.filter((k) => blob.includes(k));
+
+    return {
+      summary,
+      rawText,
+      transcript: messages.map((m) => ({ role: m.role, text: m.text })),
+      findings,
+      severity: null,
+      capturedAt: Date.now(),
+    };
+  }, [messages]);
+
+  const skipTriage = async () => {
     voiceCancel();
     speech.stop();
-    startIncident('manual');
-    // Demo bypass for the LLM step only: stamp dummy triage notes and hand
-    // off to the vitals scan, which has its own SKIP for the PPG step.
-    setTimeout(() => {
-      updateIncident({ triage: dummyTriage() });
-      router.replace('/triage');
-    }, 0);
+    // Use dummy data, but still persist whatever chat we captured.
+    const triage = messages.length > 0 ? buildTriageFromChat() : dummyTriage();
+    await startIncident('manual', { triage });
+    router.replace('/triage');
   };
 
-  const continueToTriage = () => {
+  const continueToTriage = async () => {
     voiceCancel();
     speech.stop();
-    startIncident('manual');
+    const triage = buildTriageFromChat();
+    await startIncident('manual', { triage });
     router.replace('/triage');
   };
 
