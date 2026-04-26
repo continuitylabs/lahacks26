@@ -105,17 +105,23 @@ export default function TriageChat() {
   const speechSpeak = speech.speak;
 
   // Force the mic shut the moment a generation begins. Prevents the model's
-  // own TTS from being transcribed into the next prompt.
+  // own TTS from being transcribed into the next prompt. Only abort when
+  // actually listening — calling abort() on an idle recognizer can crash
+  // the native module on iOS.
   useEffect(() => {
-    if (isGenerating) voiceCancel();
-  }, [isGenerating, voiceCancel]);
+    if (isGenerating && isListening) voiceCancel();
+  }, [isGenerating, isListening, voiceCancel]);
 
-  // Speak each freshly finalised assistant turn (including the seeded opener).
+  // Speak each freshly finalised assistant turn. Skips the seeded opener
+  // because it arrives synchronously on mount, before the audio session is
+  // settled — speaking it would chain into auto-mic and crash on the next
+  // send (idle-recognizer abort).
   const lastSpokenIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (isGenerating) return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== 'assistant') return;
+    if (last.text === OPENER) return;
     if (lastSpokenIdRef.current === last.id) return;
     lastSpokenIdRef.current = last.id;
     speechSpeak(last.text);
