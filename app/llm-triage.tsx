@@ -38,17 +38,29 @@ const C = {
   safe: '#6CC28A',
 };
 
+// Floor on how long the page stays visible before advancing. The on-device
+// model often resolves to its heuristic fallback in <100ms (e.g. when Zetic
+// isn't loaded), which would otherwise make the page flash by.
+const MIN_DWELL_MS = 3000;
+
 export default function LlmTriage() {
   const router = useRouter();
   const { state, updateIncident, updateSession } = useProfileState();
   const incident = state.session.incident;
   const fired = useRef(false);
   const advanced = useRef(false);
+  const mountedAt = useRef(Date.now());
 
-  const advance = () => {
+  const advance = (immediate = false) => {
     if (advanced.current) return;
     advanced.current = true;
-    router.replace('/rescue');
+    if (immediate) {
+      router.replace('/rescue');
+      return;
+    }
+    const elapsed = Date.now() - mountedAt.current;
+    const remaining = Math.max(0, MIN_DWELL_MS - elapsed);
+    setTimeout(() => router.replace('/rescue'), remaining);
   };
 
   // Run the on-device Zetic triage once, seeded with whatever PPG vitals and
@@ -94,7 +106,7 @@ export default function LlmTriage() {
     if (!incident?.triage) {
       updateIncident({ triage: dummyTriage() });
     }
-    advance();
+    advance(true);
   };
 
   return (

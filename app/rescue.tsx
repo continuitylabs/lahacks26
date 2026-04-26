@@ -62,9 +62,13 @@ type AgentPhase =
 // Hard cap on how long we wait for the fetch.ai agent network. After this
 // the page falls back to on-device data and advances to the call stage.
 const AGENT_TIMEOUT_MS = 30_000;
-// Brief pause after the agent network settles so the user sees the success
-// state before we auto-advance to the final call screen.
-const ADVANCE_DELAY_MS = 1200;
+// Floor on how long the page stays visible before advancing. The agent
+// network can fail almost instantly (no key, offline) — without this floor
+// the page would flash by before the user reads it.
+const MIN_DWELL_MS = 3500;
+// Brief tail after the network settles on the success path so the "Plan
+// ready" state lands before we move on.
+const SUCCESS_TAIL_MS = 1200;
 
 export default function Rescue() {
   const router = useRouter();
@@ -77,11 +81,19 @@ export default function Rescue() {
   const ready = location.status !== 'pending' && loaded;
   const incident = state.session.incident;
   const agentAbortRef = useRef<AbortController | null>(null);
+  const mountedAt = useRef(Date.now());
 
-  const advance = () => {
+  const advance = (opts: { immediate?: boolean; tail?: number } = {}) => {
     if (advanced.current) return;
     advanced.current = true;
-    router.replace('/call');
+    if (opts.immediate) {
+      router.replace('/call');
+      return;
+    }
+    const elapsed = Date.now() - mountedAt.current;
+    const tail = opts.tail ?? 0;
+    const wait = Math.max(tail, MIN_DWELL_MS - elapsed);
+    setTimeout(() => router.replace('/call'), wait);
   };
 
   useEffect(() => {
@@ -121,7 +133,7 @@ export default function Rescue() {
         updateSession({
           lastReportMarkdown: { markdown: result.markdown, capturedAt: Date.now() },
         });
-        setTimeout(advance, ADVANCE_DELAY_MS);
+        advance({ tail: SUCCESS_TAIL_MS });
       })
       .catch((err: unknown) => {
         clearTimeout(timer);
@@ -137,7 +149,7 @@ export default function Rescue() {
           },
         });
         setAgentPhase({ kind: 'error', message });
-        setTimeout(advance, ADVANCE_DELAY_MS);
+        advance();
       });
   }, [ready, state, location.status, location.coords, updateIncident, updateSession]);
 
@@ -163,7 +175,7 @@ export default function Rescue() {
         capturedAt: Date.now(),
       },
     });
-    advance();
+    advance({ immediate: true });
   };
 
   return (
