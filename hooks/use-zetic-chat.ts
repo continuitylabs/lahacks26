@@ -14,23 +14,29 @@ export type LoadStatus =
   | { kind: 'ready' }
   | { kind: 'error'; message: string };
 
-const MODEL_ID = 'Qwen/Qwen3-0.6B';
+const MODEL_ID = 'Steve/Qwen3.5-2B';
+
+const SYSTEM_PROMPT = '';
 
 // ~4 chars/token, targeting ~30k input tokens to leave room for generation within Qwen3's 32k window
 const MAX_PROMPT_CHARS = 120000;
 
-function buildPrompt(history: ChatMessage[]): string {
+function buildPrompt(history: ChatMessage[], system: string): string {
+  const systemLine = system.trim()
+    ? `<|im_start|>system\n${system.trim()}<|im_end|>\n`
+    : '';
+  const budget = MAX_PROMPT_CHARS - systemLine.length;
   const lines: string[] = [];
   let length = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     const m = history[i];
-    const role = m.role === 'user' ? 'User' : 'Assistant';
-    const line = `${role}: ${m.text}`;
-    if (length + line.length > MAX_PROMPT_CHARS) break;
+    const role = m.role === 'user' ? 'user' : 'assistant';
+    const line = `<|im_start|>${role}\n${m.text}<|im_end|>\n`;
+    if (length + line.length > budget) break;
     lines.unshift(line);
     length += line.length;
   }
-  return `${lines.join('\n')}\nAssistant: `;
+  return `${systemLine}${lines.join('\n')}<|im_start|>assistant\n<think>\n\n</think>\n\n`;
 }
 
 function makeId() {
@@ -107,7 +113,7 @@ export function useZeticChat() {
       setStream('');
       setIsGenerating(true);
 
-      const prompt = buildPrompt(next);
+      const prompt = buildPrompt(next, SYSTEM_PROMPT);
       try {
         const full = await Zetic.generate(prompt);
         const finalText = full || streamRef.current;
