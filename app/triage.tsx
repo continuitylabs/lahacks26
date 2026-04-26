@@ -186,7 +186,7 @@ export default function Triage() {
                 // the on-device triage placeholder. Useful for exercising the
                 // call layer when the camera or PPG signal isn't usable.
                 updateIncident({ vitals: dummyVitals() });
-                router.replace('/llm-triage');
+                router.replace('/rescue');
               }}
               style={{
                 borderRadius: 999,
@@ -498,7 +498,7 @@ export default function Triage() {
                     </Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => router.replace('/llm-triage')}
+                    onPress={() => router.replace('/rescue')}
                     disabled={!result}
                     style={({ pressed }) => ({
                       flex: 1,

@@ -53,14 +53,6 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
-              name="llm-triage"
-              options={{
-                presentation: 'modal',
-                headerShown: false,
-                contentStyle: { backgroundColor: 'transparent' },
-              }}
-            />
-            <Stack.Screen
               name="call"
               options={{
                 presentation: 'modal',
