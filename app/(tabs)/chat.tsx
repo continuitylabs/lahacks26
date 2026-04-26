@@ -66,6 +66,7 @@ export default function Chat() {
 
   const speech = useSpeechOutput();
   const voice = useVoiceInput({
+    silenceMs: 2500,
     onPartial: (text) => setInput(text),
     onFinal: (text) => {
       setInput('');
@@ -81,6 +82,25 @@ export default function Chat() {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [messages.length, stream]);
 
+  const ready = status.kind === 'ready';
+  const canSend = ready && !isGenerating && input.trim().length > 0;
+  const isListening =
+    voice.state === 'listening' || voice.state === 'requesting';
+  const canVoice = ready && !isGenerating;
+
+  // The hook objects are fresh each render, but their methods are
+  // useCallback-stable. Pull the methods out so effect deps don't churn.
+  const voiceCancel = voice.cancel;
+  const voiceStart = voice.start;
+  const speechSpeak = speech.speak;
+
+  // Force the mic shut the moment a generation begins (or while one is in
+  // flight). Even if the prior turn somehow left it open, the model will
+  // never transcribe its own TTS into the next prompt.
+  useEffect(() => {
+    if (isGenerating) voiceCancel();
+  }, [isGenerating, voiceCancel]);
+
   const lastSpokenIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (isGenerating) return;
@@ -88,14 +108,27 @@ export default function Chat() {
     if (!last || last.role !== 'assistant') return;
     if (lastSpokenIdRef.current === last.id) return;
     lastSpokenIdRef.current = last.id;
-    speech.speak(last.text);
-  }, [messages, isGenerating, speech]);
+    speechSpeak(last.text);
+  }, [messages, isGenerating, speechSpeak]);
 
-  const ready = status.kind === 'ready';
-  const canSend = ready && !isGenerating && input.trim().length > 0;
-  const isListening =
-    voice.state === 'listening' || voice.state === 'requesting';
-  const canVoice = ready && !isGenerating;
+  // Auto-advance: open the mic only once TTS audio has actually finished
+  // playing (completionTick ticks on `onDone`, never on stop/error). This
+  // is the *only* path that calls voice.start() automatically.
+  const lastTickRef = useRef(speech.completionTick);
+  useEffect(() => {
+    if (speech.completionTick === lastTickRef.current) return;
+    lastTickRef.current = speech.completionTick;
+    if (ready && !isGenerating && !isListening && speech.enabled) {
+      voiceStart();
+    }
+  }, [
+    speech.completionTick,
+    speech.enabled,
+    ready,
+    isGenerating,
+    isListening,
+    voiceStart,
+  ]);
 
   const toggleVoice = useCallback(() => {
     if (isListening) {
