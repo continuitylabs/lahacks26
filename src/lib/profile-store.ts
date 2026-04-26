@@ -14,7 +14,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = '@northstar/profile-state-v1';
-const CURRENT_SCHEMA_VERSION = 2 as const;
+const CURRENT_SCHEMA_VERSION = 3 as const;
 
 export type EmergencyContact = {
   name: string;
@@ -57,11 +57,18 @@ export type LastReportMarkdown = {
  * detection → triage → vitals → fetch.ai → call. Even when fetch.ai is down,
  * downstream stages can still operate from the upstream-captured fields.
  */
+export type TranscriptTurn = {
+  role: 'user' | 'assistant';
+  text: string;
+};
+
 export type IncidentTriageSlice = {
   /** Free-form clinical-ish summary surfaced to the user and forwarded to dispatch. */
   summary: string;
   /** Raw model output (Zetic chat / vision) before any cleanup. */
   rawText: string;
+  /** Full Zetic chat history at the moment the user advanced to triage. */
+  transcript: TranscriptTurn[];
   /** Keyword findings extracted on-device, fed to the medical coordinator. */
   findings: string[];
   /** On-device severity hint (overridable by the agent network). */
@@ -83,6 +90,11 @@ export type IncidentVitalsSlice = {
   capturedAt: number;
 };
 
+export type NextStepCard = {
+  title: string;
+  body: string;
+};
+
 export type IncidentAgentReportSlice = {
   /** Raw markdown returned by the rescue coordinator. Empty when timed out. */
   markdown: string;
@@ -91,6 +103,16 @@ export type IncidentAgentReportSlice = {
   rescueScript: string | null;
   extractionRecommendation: string | null;
   agentSeverity: string | null;
+  /** Location Scout's paragraph for the dispatch script. */
+  locationSummary: string | null;
+  /** Weather Analyst's paragraph + urgency modifier. */
+  weatherSummary: string | null;
+  weatherUrgencyModifier: 'elevate' | 'maintain' | 'reduce' | null;
+  /** Next Steps Planner output for the Instructions screen. */
+  nextStepsHeader: string | null;
+  nextSteps: NextStepCard[];
+  /** Names of agents that timed out. Empty on the happy path. */
+  degradedAgents: string[];
   capturedAt: number;
 };
 
@@ -175,6 +197,38 @@ function migrate(raw: unknown): ProfileState {
     typeof obj.schemaVersion === 'number' ? (obj.schemaVersion as number) : -1;
 
   if (version > CURRENT_SCHEMA_VERSION) return DEFAULT_STATE;
+
+  if (version === 2) {
+    // v2 → v3: triage gains `transcript`; agentReport gains nextSteps + weather/location summaries.
+    const session = (obj.session as Partial<Session>) ?? {};
+    const incident = session.incident ?? null;
+    const migratedIncident = incident
+      ? {
+          ...incident,
+          triage: incident.triage
+            ? { ...incident.triage, transcript: incident.triage.transcript ?? [] }
+            : null,
+          agentReport: incident.agentReport
+            ? {
+                ...incident.agentReport,
+                locationSummary: incident.agentReport.locationSummary ?? null,
+                weatherSummary: incident.agentReport.weatherSummary ?? null,
+                weatherUrgencyModifier:
+                  incident.agentReport.weatherUrgencyModifier ?? null,
+                nextStepsHeader: incident.agentReport.nextStepsHeader ?? null,
+                nextSteps: incident.agentReport.nextSteps ?? [],
+                degradedAgents: incident.agentReport.degradedAgents ?? [],
+              }
+            : null,
+        }
+      : null;
+    return {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      profile: { ...DEFAULT_PROFILE, ...((obj.profile as Partial<Profile>) ?? {}) } as Profile,
+      session: { ...DEFAULT_SESSION, ...session, incident: migratedIncident } as Session,
+    };
+  }
+
   if (version === 1) {
     // v1 → v2 added `session.incident`. Preserve everything else; default the
     // new field. The tail merge covers shape gaps without overwriting data.
@@ -302,17 +356,24 @@ function makeIncidentId(): string {
   return `inc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+export type StartIncidentInitial = {
+  triage?: IncidentTriageSlice;
+  coords?: IncidentCoordsSlice;
+  vitals?: IncidentVitalsSlice;
+};
+
 export async function startIncident(
-  trigger: IncidentTrigger
+  trigger: IncidentTrigger,
+  initial?: StartIncidentInitial
 ): Promise<ProfileState> {
   const current = await loadProfileState();
   const incident: Incident = {
     id: makeIncidentId(),
     trigger,
     startedAt: Date.now(),
-    triage: null,
-    coords: null,
-    vitals: null,
+    triage: initial?.triage ?? null,
+    coords: initial?.coords ?? null,
+    vitals: initial?.vitals ?? null,
     agentReport: null,
     call: { status: 'idle', callSid: null, rescueScript: null, audioUrl: null, notes: null, capturedAt: Date.now() },
   };

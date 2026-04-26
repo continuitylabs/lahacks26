@@ -18,6 +18,7 @@ import {
   type ProfilePatch,
   type ProfileState,
   type Session,
+  type StartIncidentInitial,
 } from '@/src/lib/profile-store';
 
 type IncidentSlicePatch = {
@@ -36,7 +37,7 @@ type ProfileStoreContextValue = {
   updateSession: (patch: Partial<Session>) => void;
   clearSession: () => void;
   /** Start a new pipeline run (rotates the incident id). */
-  startIncident: (trigger: IncidentTrigger) => void;
+  startIncident: (trigger: IncidentTrigger, initial?: StartIncidentInitial) => Promise<void>;
   /** Patch fields on the active incident. No-op if no active incident. */
   updateIncident: (patch: IncidentSlicePatch) => void;
   /** Drop the active incident (post-call cleanup). */
@@ -73,9 +74,13 @@ export function ProfileStoreProvider({ children }: { children: ReactNode }) {
     void persistClearSession().then((next) => setState(next));
   }, []);
 
-  const startIncident = useCallback((trigger: IncidentTrigger) => {
-    void persistStartIncident(trigger).then((next) => setState(next));
-  }, []);
+  const startIncident = useCallback(
+    async (trigger: IncidentTrigger, initial?: StartIncidentInitial) => {
+      const next = await persistStartIncident(trigger, initial);
+      setState(next);
+    },
+    []
+  );
 
   const updateIncident = useCallback((patch: IncidentSlicePatch) => {
     void persistUpdateIncident(patch).then((next) => setState(next));
