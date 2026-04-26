@@ -18,6 +18,12 @@ export function dummyTriage(): IncidentTriageSlice {
     summary:
       'Suspected moderate ankle sprain after a fall on uneven terrain. Patient is alert, oriented, and breathing normally. Visible swelling, weight-bearing painful. No head or spine involvement reported.',
     rawText: 'Twisted ankle on a downhill section, fell forward onto my hands. No bleeding. Pain in the right ankle, can wiggle toes.',
+    transcript: [
+      { role: 'assistant', text: "I see you've been injured. Please describe the injury and what happened." },
+      { role: 'user', text: 'Twisted my ankle on a downhill section, fell forward onto my hands.' },
+      { role: 'assistant', text: 'Can you bear weight on the ankle? Any bleeding or visible deformity?' },
+      { role: 'user', text: 'It hurts to put weight on it. No bleeding. There is some swelling.' },
+    ],
     findings: ['ankle', 'sprain'],
     severity: 'moderate',
     capturedAt: Date.now(),
@@ -52,6 +58,12 @@ export function dummyAgentReport(): IncidentAgentReportSlice {
     rescueScript: null,
     extractionRecommendation: null,
     agentSeverity: null,
+    locationSummary: null,
+    weatherSummary: null,
+    weatherUrgencyModifier: null,
+    nextStepsHeader: null,
+    nextSteps: [],
+    degradedAgents: [],
     capturedAt: Date.now(),
   };
 }
