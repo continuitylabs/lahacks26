@@ -1,20 +1,20 @@
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withSequence,
   withTiming,
-  Easing,
 } from 'react-native-reanimated';
 
 import { BrandMark } from '@/components/brand-mark';
-import { Map3D } from '@/components/map-3d';
 import { useFallDetectorContext } from '@/components/fall-detector-provider';
+import { Map3D } from '@/components/map-3d';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { useProfileState } from '@/src/lib/profile-store-provider';
 import { Pressable, Text, View } from '@/src/tw';
@@ -50,10 +50,10 @@ export default function Home() {
     ctaGlow.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
-        withTiming(0.5, { duration: 1800, easing: Easing.inOut(Easing.quad) })
+        withTiming(0.5, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
       ),
       -1,
-      false
+      false,
     );
   }, [ctaGlow]);
 
@@ -76,7 +76,11 @@ export default function Home() {
       {/* Vignette so HUD elements stay legible over varied terrain. */}
       <LinearGradient
         pointerEvents="none"
-        colors={['rgba(11,14,18,0.65)', 'rgba(11,14,18,0)', 'rgba(11,14,18,0.85)']}
+        colors={[
+          'rgba(11,14,18,0.65)',
+          'rgba(11,14,18,0)',
+          'rgba(11,14,18,0.85)',
+        ]}
         locations={[0, 0.4, 1]}
         style={StyleAbsoluteFill}
       />
@@ -118,7 +122,7 @@ export default function Home() {
                 letterSpacing: 2.4,
               }}
             >
-              ⚑  SET UP YOUR BEACON
+              ⚑ SET UP YOUR BEACON
             </Text>
           </Pressable>
         ) : (
@@ -228,23 +232,6 @@ export default function Home() {
             </Text>
           </Pressable>
         </Animated.View>
-
-        <Text
-          selectable={false}
-          style={{
-            marginTop: 14,
-            textAlign: 'center',
-            color: 'rgba(245,239,228,0.55)',
-            fontFamily: MONO,
-            fontSize: 11,
-            letterSpacing: 2.4,
-            textShadowColor: 'rgba(0, 0, 0, 0.7)',
-            textShadowOffset: { width: 0, height: 1 },
-            textShadowRadius: 4,
-          }}
-        >
-          ON-DEVICE TRIAGE  •  AUTONOMOUS RESCUE
-        </Text>
 
         {__DEV__ ? (
           <Pressable

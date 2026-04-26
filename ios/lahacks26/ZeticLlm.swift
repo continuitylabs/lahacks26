@@ -76,7 +76,7 @@ class ZeticLlm: RCTEventEmitter {
             name: name,
             version: 1,
             target: .LLAMA_CPP,
-            quantType: .GGUF_QUANT_Q8_0,
+            quantType: .GGUF_QUANT_Q4_K_M,
             apType: .CPU
           ) { progress in
             self.send("zetic:download", ["progress": progress])

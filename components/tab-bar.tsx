@@ -1,9 +1,12 @@
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
 
 import { Pressable, Text, View } from '@/src/tw';
+
+const LIQUID_GLASS = isLiquidGlassAvailable();
 
 type IconName = 'home' | 'chat' | 'profile' | 'info';
 
@@ -55,22 +58,36 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
         style={{
           overflow: 'hidden',
           borderRadius: 999,
-          borderWidth: 1,
+          borderWidth: LIQUID_GLASS ? 0 : 1,
           borderColor: 'rgba(255,255,255,0.18)',
           borderCurve: 'continuous',
         }}
       >
-        <BlurView
-          intensity={50}
-          tint="dark"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-          }}
-        />
+        {LIQUID_GLASS ? (
+          <GlassView
+            glassEffectStyle="regular"
+            isInteractive={true}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }}
+          />
+        ) : (
+          <BlurView
+            intensity={50}
+            tint="dark"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }}
+          />
+        )}
         <View
           style={{
             flexDirection: 'row',

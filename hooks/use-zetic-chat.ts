@@ -18,7 +18,7 @@ export type LoadStatus =
 const MODEL_ID = 'Steve/Qwen3.5-2B';
 
 const SYSTEM_PROMPT =
-  "You are a helpful assistant that helps the user with hiking injuries. Please do not use any emojis. I REPEAT DO NOT EVER USE EMOJIS IN YOUR RESPONSE. This is a voice to voice conversation so do not use any markdown formatting. The user is most likely in trouble so respond very shortly and ask as many questions about the user's current situation. Do not overthink. It is most certainly not that deep.";
+  "You are a helpful assistant that helps the user with hiking emergencies. Please do not use any emojis. I REPEAT DO NOT EVER USE EMOJIS IN YOUR RESPONSE. This is a voice to voice conversation so do not use any markdown formatting. The user is most likely in trouble so respond very shortly and ask as many questions about the user's current situation. Do not overthink. Make sure to respond with only one question at a time";
 // 'Your thinking must be no more than 1 sentence. You are a helpful assistant that helps the user with hiking injuries.';
 
 // ~4 chars/token, targeting ~30k input tokens to leave room for generation within Qwen3's 32k window
@@ -39,7 +39,8 @@ function buildPrompt(history: ChatMessage[], system: string): string {
     lines.unshift(line);
     length += line.length;
   }
-  return `${systemLine}${lines.join('\n')}<|im_start|>assistant<think>Okay, I need to respond to this emergency situation. First, I should assess the severity. Is the user in distress? Are there any signs of severe injury? I need to keep it brief. I should ask questions to understand the situation better. Wait, but I need to be concise. Let me structure the questions. Wait, I should ask if they can move the leg without pain. Then ask about any bleeding. Then ask about the rock's position. Wait, but I need to make sure I don't use markdown. So just plain text. Wait, but in the initial prompt, it says "do not use any emojis" and "do not use any markdown". So I need to avoid both. So just plain text. Okay.</think>`;
+  // return `${systemLine}${lines.join('\n')}<|im_start|>assistant<think>Okay, I need to respond to this emergency situation. First, I should assess the severity. Is the user in distress? Are there any signs of severe injury? I need to keep it brief. I should ask questions to understand the situation better.</think>`;
+  return `${systemLine}${lines.join('\n')}<|im_start|>assistant\n`;
 }
 
 function makeId() {
