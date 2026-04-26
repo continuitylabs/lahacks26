@@ -88,6 +88,31 @@ export default function TriageChat() {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [messages.length, stream]);
 
+  // Count assistant replies that follow at least one user message. The seeded
+  // opener is ignored (no preceding user turn). Whenever this count finalises
+  // at TARGET_REPLIES, hold briefly so the user sees the meter fill, then
+  // advance.
+  const assistantRepliesAfterUser = (() => {
+    let userSeen = false;
+    let count = 0;
+    for (const m of messages) {
+      if (m.role === 'user') {
+        userSeen = true;
+      } else if (m.role === 'assistant' && userSeen) {
+        count += 1;
+      }
+    }
+    return count;
+  })();
+
+  useEffect(() => {
+    if (assistantRepliesAfterUser < TARGET_REPLIES) return;
+    const t = setTimeout(() => {
+      router.replace('/triage');
+    }, 800);
+    return () => clearTimeout(t);
+  }, [assistantRepliesAfterUser, router]);
+
   const onSubmit = useCallback(() => {
     const text = input.trim();
     if (!text) return;
@@ -149,7 +174,10 @@ export default function TriageChat() {
             </Text>
           </GlassButton>
 
-          <ProgressMeter filled={0} total={TARGET_REPLIES} />
+          <ProgressMeter
+            filled={Math.min(assistantRepliesAfterUser, TARGET_REPLIES)}
+            total={TARGET_REPLIES}
+          />
 
           <GlassButton
             onPress={onContinue}
