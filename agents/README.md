@@ -1,20 +1,24 @@
 # Northstar — Fetch.ai Agent Network
 
-Three autonomous Fetch.ai uAgents that wake up the moment connectivity returns
-and coordinate a backcountry rescue. Reachable from ASI:One via the Chat
-Protocol. Built for the **UCLA Hackathon 2026 — Fetch.ai track**.
+Four autonomous Fetch.ai uAgent specialists coordinated by a Rescue
+Coordinator that wakes up the moment connectivity returns and composes a
+backcountry rescue plan. Reachable from ASI:One via the Chat Protocol.
+Built for the **UCLA Hackathon 2026 — Fetch.ai track**.
 
 ## The agents
 
 | Agent | Role | Real tools it executes |
 |---|---|---|
-| **Rescue Coordinator** | Chat-Protocol entrypoint. Parses the user's message into structured fields, fans out to the specialists in parallel, and composes the final dispatch plan. | Anthropic Claude (incident parsing) |
-| **Agent A — Location Scout** | Queries POIs around the GPS: nearest ranger station, hospital, helipad, trailhead. Pulls weather and reasons about whether helicopter extraction is feasible. | OpenStreetMap Overpass API · Open-Meteo |
-| **Agent B — Medical Coordinator** | Reasons about severity from the on-device triage findings. Outputs an ESI-like urgency score, immediate actions, and what to monitor for. | Anthropic Claude (with a keyword-heuristic fallback in `severity.py`) |
-| **Agent C — Contact Orchestrator** | Drafts the dispatcher script (Claude), synthesizes the voice (ElevenLabs), and — only if the user explicitly asks — places the call (Twilio). | Anthropic Claude · ElevenLabs · Twilio |
+| **Rescue Coordinator** | Chat-Protocol entrypoint. Parses the user's message (YAML header or free-form) into structured fields, fans out to all 4 specialists in parallel, and composes the final markdown + JSON reply. | Anthropic Claude (incident parsing), PyYAML |
+| **Agent A — Location Scout** | Queries POIs around the GPS: nearest ranger station, hospital, helipad, trailhead. Composes a dispatcher-ready paragraph about rescue assets and recommended extraction. | OpenStreetMap Overpass API · Anthropic Claude |
+| **Agent B — Weather Analyst** | Fetches current + forecast weather. Reasons about how conditions affect urgency for the specific incident (severity + injury keywords). Outputs `urgency_modifier` ∈ {elevate, maintain, reduce} and a script paragraph. | Open-Meteo · Anthropic Claude |
+| **Agent C — Script Composer** | Integrates everything (parsed incident, on-device Zetic LLM transcript, vitals, Location paragraph, Weather paragraph) into the final dispatcher script. Optionally synthesizes voice via ElevenLabs and places the call via Twilio. | Anthropic Claude · ElevenLabs · Twilio |
+| **Agent D — Next Steps Planner** | Produces 3-5 structured "what to do right now" cards for the post-call Instructions screen, scaled to severity. | Anthropic Claude (with severity-bucketed templates as fallback) |
 
 The Rescue Coordinator publishes its **chat manifest** to Agentverse, so it
 shows up in ASI:One the moment you start it with `AGENTVERSE_API_KEY` set.
+**Only the coordinator needs a mailbox claim** — specialists run with
+localhost endpoints, so agent→agent routing works without manual setup.
 
 ## What the demo looks like
 
@@ -24,24 +28,28 @@ shows up in ASI:One the moment you start it with `AGENTVERSE_API_KEY` set.
    > mile marker 7.2 (34.0848°N, -118.7798°W). I'm bleeding from my left
    > forearm but conscious. No head trauma."*
 
-2. Within ~5 seconds, the coordinator dispatches Agents A and B in parallel.
+2. Within ~5 seconds, the coordinator dispatches Agents A, B, and D in
+   parallel; once A and B complete it dispatches C with their outputs.
    You'll see in the logs:
 
    ```
    [Coordinator] chat from agent1q…  (118 chars, place_call=False)
-   [Coordinator] req=… dispatched to scout + medical
+   [Coordinator] req=… dispatched scout + weather + next_steps
    [Scout]       req=… → replied
-   [Medical]     req=… → moderate (ESI 3)
-   [Contact]     req=… → status=voiced
+   [Weather]     req=… → claude elevate
+   [NextSteps]   req=… → claude 4 cards
+   [Coordinator] req=… → dispatched script_composer
+   [Script]      req=… → status=drafted
    [Coordinator] final reply sent → agent1q…
    ```
 
-3. ASI:One renders the markdown rescue plan: location summary with the
-   recommended extraction path, severity assessment, and the drafted
-   dispatcher script.
+3. ASI:One renders a markdown rescue plan with sections for each agent,
+   followed by a fenced ```json``` block carrying structured fields the
+   Expo app parses: `rescueScript`, `nextSteps`, `weatherUrgencyModifier`,
+   `degradedAgents`, etc.
 
-4. Reply with **"call now"** and the Contact Orchestrator places the call
-   via Twilio (only if the keys are set).
+4. Reply with **"call now"** and the Script Composer places the call via
+   Twilio (only if the keys are set).
 
 ## Setup
 
@@ -60,30 +68,33 @@ Either is fine. **Every key is optional** — the system degrades gracefully:
 
 | Missing | Effect |
 |---|---|
-| `AGENTVERSE_API_KEY` | Agents only run locally; not discoverable from ASI:One |
-| `ANTHROPIC_API_KEY` | Falls back to regex parsing + keyword severity heuristic |
-| `ELEVENLABS_API_KEY` | Returns the script as text only, no MP3 |
-| `TWILIO_*` | "Call myself" path still works; "Have Northstar call" returns failed |
+| `AGENTVERSE_API_KEY` | Coordinator runs in endpoint mode; not discoverable from ASI:One. App→Coordinator path still works. |
+| `ANTHROPIC_API_KEY` | Each agent falls back to its template/heuristic (regex parsing, weather rule table, severity-bucketed cards). |
+| `ELEVENLABS_API_KEY` | Returns the script as text only, no MP3. |
+| `TWILIO_*` | "Call myself" path still works; "Have Northstar call" returns failed. |
 
 ## Running it
 
 ```bash
 python check_setup.py                    # validate env + print expected addresses
-python run_all.py                        # production: each agent in its own process, Agentverse-routed
+python run_all.py                        # production: each agent in its own process, Coordinator on Agentverse
 python run_all.py --local                # offline: single Bureau, no Agentverse
 python run_all.py --local --smoke-test   # offline + test client fires a sample chat
+python run_all.py --smoke-test           # multiprocess + test client
 ```
 
 **Default (multiprocess) mode** spawns each agent as its own subprocess on
-its own port (8000–8003). uAgents prints an inspector URL for each agent
-on startup; click each one once (while logged into Agentverse) to register
-that agent's mailbox slot. After that, ASI:One can route messages.
+its own port (8000–8005). Only the Rescue Coordinator runs in mailbox mode
+when `AGENTVERSE_API_KEY` is set. uAgents prints **one** inspector URL (the
+coordinator's) — click it once while logged into Agentverse to register the
+mailbox slot. After that, ASI:One can route messages.
 
-> **Why not Bureau for the Agentverse path?** The Agentverse inspector
-> doesn't support Bureaus — it expects one agent per HTTP server. Our
-> default multiprocess layout matches what the inspector expects.
+> **Why coordinator-only mailbox?** Agentverse-routed agent→agent
+> communication requires every recipient to have a claimed mailbox slot.
+> By keeping specialists on localhost endpoints, the network works
+> first-try without any manual setup beyond the single coordinator claim.
 
-**`--local` mode** runs all four agents in a single Bureau, in one process,
+**`--local` mode** runs all six agents in a single Bureau, in one process,
 with no Agentverse routing. The smoke-test client lives here.
 
 ## Testing just the Agentverse layer
@@ -97,11 +108,10 @@ deterministic addresses your seeds map to, and shows the Agentverse profile
 URLs. No network calls.
 
 **2. Multiprocess + inspector flow.** `python run_all.py` spawns each
-agent as its own subprocess. Each one prints its own inspector URL. While
-logged into Agentverse, click each URL once to register the corresponding
-mailbox slot. After that, the agents stay registered across runs; you don't
-have to click again. Once all four are claimed, you can chat with the
-rescue coordinator from [asi1.ai](https://asi1.ai).
+agent as its own subprocess. Click the coordinator's inspector URL once
+to register its mailbox slot. After that, the agents stay registered
+across runs; you don't have to click again. Once the coordinator is claimed,
+you can chat with it from [asi1.ai](https://asi1.ai).
 
 **3. End-to-end offline smoke test.** `python run_all.py --local --smoke-test`
 spins up the network plus an in-process test client that fires this prompt
@@ -111,27 +121,12 @@ at the Rescue Coordinator on startup:
 > mile marker 7.2 (34.0848°N, -118.7798°W). I'm bleeding from my left
 > forearm but conscious. No head trauma. My name is Jake."*
 
-Within a few seconds you'll see:
-
-```
-[SmokeTest] sending sample chat to coordinator…
-[Coordinator] chat from agent1q…  (218 chars, place_call=False)
-[Coordinator] req=… dispatched to scout + medical
-[Scout]       req=… → replied
-[Medical]     req=… → moderate (ESI 3)        # heuristic fallback if no Claude
-[Contact]     req=… → status=drafted          # template script if no Claude
-[Coordinator] final reply sent → agent1q…
-
-═══════════════════════════════════════════════════════════════
-  ✓  Coordinator replied — chat protocol round-trip succeeded
-═══════════════════════════════════════════════════════════════
-# 🌟 Northstar Rescue Coordination
-…
-```
-
-Pass a different prompt with `--prompt "..."`. Smoke-test mode runs
-fully in-process and skips Agentverse entirely — useful when you don't
-have internet or want to verify the agent logic without touching ASI:One.
+Within a few seconds you'll see the coordinator dispatching all 4
+specialists, their replies, the script composer firing once Location +
+Weather complete, and the final markdown + JSON tail reply. Pass a
+different prompt with `--prompt "..."`. Smoke-test mode runs fully
+in-process and skips Agentverse entirely — useful when you don't have
+internet or want to verify the agent logic without touching ASI:One.
 
 ## Deliverables checklist
 
@@ -147,53 +142,56 @@ have internet or want to verify the agent logic without touching ASI:One.
 The Fetch.ai track asks for "reasoning, tool execution, and a real-world
 problem solved." Concretely:
 
-- **Reasoning** — the Medical Coordinator runs Claude with adaptive thinking
-  to map free-form triage findings to an ESI urgency score with rationale
-  and actions. The Rescue Coordinator parses arbitrary natural-language
-  incident reports into structured GPS + injury data.
-- **Tool execution** — the Location Scout makes real, observable calls to
-  OpenStreetMap (Overpass) and Open-Meteo, then composes their results into
-  an extraction recommendation. The Contact Orchestrator chains Claude →
-  ElevenLabs → Twilio in a single agentic flow.
-- **Coordination** — three independent agents on Agentverse, each with its
-  own address and chat protocol manifest, talking to each other through
-  uAgent messages. The coordinator fans out, waits on parallel responses,
-  then dispatches the third stage. None of it is hard-coded — every agent
-  acts on its own data and tools.
+- **Reasoning** — every specialist reasons. Location Scout composes a
+  dispatcher-ready paragraph from raw POI tuples. Weather Analyst maps
+  current conditions + injury context to an `urgency_modifier`. Script
+  Composer integrates 7+ signals into one optimized voice script. Next
+  Steps Planner generates severity-tailored first-aid cards.
+- **Tool execution** — Overpass (real OSM queries), Open-Meteo (real
+  weather), Claude (real LLM reasoning), ElevenLabs (real voice),
+  Twilio (real outbound calls).
+- **Coordination** — five independent agents (Coordinator + 4 specialists)
+  on the Fetch.ai bus, each with its own address and (for the
+  coordinator) a published chat-protocol manifest, talking to each
+  other through uAgent messages. The coordinator fans out, conditionally
+  dispatches the script composer once Location + Weather are in, and
+  settles to a final markdown + JSON reply when all 4 specialists return
+  (or 20s elapse).
 
 ## Layout
 
 ```
 agents/
-├── run_all.py                           # Bureau entrypoint
+├── run_all.py                           # Multiprocess + Bureau entrypoint
+├── run_one.py                           # Subprocess launcher
 ├── requirements.txt
 ├── .env.example
 └── northstar_agents/
     ├── schemas.py                       # uAgents Models for inter-agent messages
     ├── config.py                        # env loading + address registry
-    ├── severity.py                      # heuristic medical classifier (fallback)
-    ├── rescue_coordinator.py            # Chat Protocol + fan-out
+    ├── rescue_coordinator.py            # Chat Protocol + fan-out + JSON tail reply
     ├── location_scout.py                # Agent A
-    ├── medical_coordinator.py           # Agent B
-    ├── contact_orchestrator.py          # Agent C
+    ├── weather_analyst.py               # Agent B
+    ├── script_composer.py               # Agent C
+    ├── next_steps_planner.py            # Agent D
+    ├── phone_agent.py                   # User's-device proxy (REST → Chat Protocol)
+    ├── test_client.py                   # In-process smoke-test client
     └── tools/
         ├── overpass.py                  # OSM POI lookup
         ├── weather.py                   # Open-Meteo
-        ├── claude.py                    # Anthropic SDK wrappers
+        ├── claude.py                    # Anthropic SDK wrappers (5 call sites)
         ├── elevenlabs.py                # voice synthesis
         └── twilio.py                    # outbound calls
 ```
 
-## Notes for future agents
+## Notes
 
 - **State is in-memory** in `rescue_coordinator.PENDING`. Single-process
   Bureau is fine for the hackathon. Move to Redis if multiple coordinator
   replicas ever run.
-- **`set_address()` runs at agent startup**, so the coordinator can't fan
-  out before all four agents have booted. The Bureau guarantees that order.
-- **The TwiML in `tools/twilio.py` uses `<Say>`** with the text directly.
-  Playing the ElevenLabs MP3 over Twilio requires hosting the file at a
-  public URL (S3 / Cloudflare R2 / ngrok); add a `<Play>` block then.
+- **Coordinator settles after 20s** even if a specialist is silent — the
+  reply's `degradedAgents` array names which agents timed out, so the
+  Expo app can degrade the UX gracefully.
 - **Twilio safety rail:** `place_call` defaults to `False`; the user must
   reply "call now" to authorize. **Never set `TWILIO_TO_NUMBER=911`** for
   testing — use your own phone.

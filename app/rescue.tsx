@@ -275,7 +275,7 @@ export default function Rescue() {
           selectable={false}
           style={{ color: C.muted, fontSize: 14, lineHeight: 20, marginBottom: 20 }}
         >
-          Three Fetch.ai agents are working in parallel. When they finish,
+          Four Fetch.ai agents are working in parallel. When they finish,
           you'll be taken to the call screen automatically.
         </Text>
 
@@ -285,18 +285,23 @@ export default function Rescue() {
           style={{ flex: 1 }}
         >
           <AgentRow
-            label="Triage Coordinator"
-            chip="REPORT"
+            label="Location Scout"
+            chip="POIs"
             phase={agentPhase}
           />
           <AgentRow
-            label="Location & Routing"
-            chip="EXTRACTION"
+            label="Weather Analyst"
+            chip="WEATHER"
             phase={agentPhase}
           />
           <AgentRow
-            label="Dispatch Composer"
+            label="Script Composer"
             chip="SCRIPT"
+            phase={agentPhase}
+          />
+          <AgentRow
+            label="Next Steps Planner"
+            chip="NEXT-STEPS"
             phase={agentPhase}
           />
 

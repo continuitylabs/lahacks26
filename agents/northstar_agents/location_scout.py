@@ -94,9 +94,10 @@ def _template_paragraph(
             f"A helicopter landing zone is available {helipad.distance_km:.1f} "
             f"kilometers {helipad.bearing}."
         )
-    bits.append(extraction)
     if not bits:
-        return "Limited rescue assets available within search radius. Recommend escalating to local search-and-rescue dispatch."
+        # No POIs found at all — the extraction string already explains this.
+        return extraction
+    bits.append(extraction)
     return " ".join(bits)
 
 
