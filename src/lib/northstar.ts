@@ -20,12 +20,19 @@ function baseUrl(): string {
   return FALLBACK_BASE;
 }
 
+export type TranscriptTurn = { role: 'user' | 'assistant'; text: string };
+
 export type ReportPayload = {
   userName: string;
   latitude: number;
   longitude: number;
   conditionSummary: string;
+  triageTranscript?: TranscriptTurn[];
+  triageSummary?: string;
+  triageFindings?: string[];
   heartRateBpm?: number;
+  spo2?: number;
+  confidence?: number;
   emergencyContact?: string;
   /** Authorize the agent network to actually place the Twilio call. */
   placeCall?: boolean;
@@ -49,7 +56,12 @@ export async function reportIncident(
       latitude: p.latitude,
       longitude: p.longitude,
       condition_summary: p.conditionSummary,
+      triage_transcript: p.triageTranscript ?? [],
+      triage_summary: p.triageSummary ?? '',
+      triage_findings: p.triageFindings ?? [],
       heart_rate_bpm: p.heartRateBpm,
+      spo2: p.spo2,
+      confidence: p.confidence,
       emergency_contact: p.emergencyContact,
       place_call: p.placeCall ?? false,
     }),
