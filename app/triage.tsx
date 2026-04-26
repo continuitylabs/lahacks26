@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 
 import { GlassCard } from '@/components/glass-card';
 import { usePpgVitals } from '@/hooks/use-ppg-vitals';
+import { dummyTriage, dummyVitals } from '@/src/lib/dummy-incident';
 import { useProfileState } from '@/src/lib/profile-store-provider';
 import { runOnDeviceTriage } from '@/src/zetic/run-triage';
 import { Pressable, Text, View } from '@/src/tw';
@@ -215,19 +216,52 @@ export default function Triage() {
           >
             TRIAGE SCAN
           </Text>
-          <Pressable
-            onPress={() => router.back()}
-            style={{
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: C.edge,
-              backgroundColor: C.glass,
-              paddingHorizontal: 12,
-              paddingVertical: 4,
-            }}
-          >
-            <Text style={{ fontSize: 12, color: C.muted }}>Close</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={() => {
+                // Stamp dummy triage + vitals into the active incident, then
+                // bounce to /rescue. Useful for exercising the call layer
+                // when the camera or PPG signal isn't usable for the demo.
+                updateIncident({
+                  triage: dummyTriage(),
+                  vitals: dummyVitals(),
+                });
+                router.replace('/rescue');
+              }}
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: 'rgba(201,138,63,0.6)',
+                backgroundColor: 'rgba(240,184,110,0.12)',
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  letterSpacing: 1.6,
+                  color: C.star,
+                  fontFamily: MONO,
+                }}
+              >
+                SKIP
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.back()}
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: C.edge,
+                backgroundColor: C.glass,
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+              }}
+            >
+              <Text style={{ fontSize: 12, color: C.muted }}>Close</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={{ marginTop: 24, gap: 8 }}>

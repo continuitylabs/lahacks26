@@ -3,6 +3,11 @@ import { useRouter } from 'expo-router';
 import { Platform } from 'react-native';
 
 import { GlassCard } from '@/components/glass-card';
+import {
+  dummyCoords,
+  dummyTriage,
+  dummyVitals,
+} from '@/src/lib/dummy-incident';
 import { useProfileState } from '@/src/lib/profile-store-provider';
 import { Pressable, Text, View } from '@/src/tw';
 
@@ -36,7 +41,22 @@ const C = {
 
 export default function ReportIncident() {
   const router = useRouter();
-  const { startIncident } = useProfileState();
+  const { startIncident, updateIncident } = useProfileState();
+
+  const skipToRescue = () => {
+    startIncident('manual');
+    // startIncident is async; the next tick has the new incident in storage.
+    // updateIncident is a no-op when the incident isn't yet present, so we
+    // wait one paint via setTimeout(0) to let the persistence settle.
+    setTimeout(() => {
+      updateIncident({
+        triage: dummyTriage(),
+        vitals: dummyVitals(),
+        coords: dummyCoords(),
+      });
+      router.replace('/rescue');
+    }, 0);
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: C.void }}>
@@ -71,19 +91,43 @@ export default function ReportIncident() {
           >
             INCIDENT REPORT
           </Text>
-          <Pressable
-            onPress={() => router.back()}
-            style={{
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: C.edge,
-              backgroundColor: C.glass,
-              paddingHorizontal: 12,
-              paddingVertical: 4,
-            }}
-          >
-            <Text style={{ fontSize: 12, color: C.muted }}>Cancel</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={skipToRescue}
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: C.starDeep,
+                backgroundColor: 'rgba(240,184,110,0.12)',
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  letterSpacing: 1.6,
+                  fontFamily: MONO,
+                  color: C.star,
+                }}
+              >
+                SKIP
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.back()}
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: C.edge,
+                backgroundColor: C.glass,
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+              }}
+            >
+              <Text style={{ fontSize: 12, color: C.muted }}>Cancel</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={{ marginTop: 40, gap: 8 }}>

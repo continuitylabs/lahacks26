@@ -15,6 +15,11 @@ import { GlassCard } from '@/components/glass-card';
 import { useCurrentLocation } from '@/hooks/use-current-location';
 import { requestEmergencyCall } from '@/src/call-bridge';
 import { composeIncidentPayload } from '@/src/lib/compose-incident-payload';
+import {
+  dummyCoords,
+  dummyTriage,
+  dummyVitals,
+} from '@/src/lib/dummy-incident';
 import { reportIncident } from '@/src/lib/northstar';
 import { parseAgentReport } from '@/src/lib/parse-agent-report';
 import { useProfileState } from '@/src/lib/profile-store-provider';
@@ -78,6 +83,11 @@ export default function Rescue() {
   const ready = location.status !== 'pending' && loaded;
   const incident = state.session.incident;
 
+  // The active agent request's abort handle. Held in a ref so the Skip
+  // button (or unmount) can cancel the in-flight request without rerunning
+  // the kick-off effect.
+  const agentAbortRef = useRef<AbortController | null>(null);
+
   // Kick off the fetch.ai round-trip the moment we have everything we need.
   // The page is *not* gated on this — even if the agent network times out,
   // the user can still proceed to the call using on-device data.
@@ -92,6 +102,7 @@ export default function Rescue() {
 
     setAgentPhase({ kind: 'pending' });
     const controller = new AbortController();
+    agentAbortRef.current = controller;
     const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
 
     reportIncident(payload, { signal: controller.signal })
@@ -258,6 +269,34 @@ export default function Rescue() {
     }
   }, [buildPatientData, callPhase.kind, incident, updateIncident]);
 
+  const skipAgentWait = useCallback(() => {
+    // Cancel any in-flight agent request, mark the agent report as a forced
+    // skip so the script section uses the on-device fallback, and stamp any
+    // missing pipeline data with dummy values so the call layer has
+    // believable inputs to send to ElevenLabs/Twilio.
+    agentAbortRef.current?.abort();
+    setAgentPhase({ kind: 'success', markdown: '', timedOut: true });
+    updateIncident({
+      triage: incident?.triage ?? dummyTriage(),
+      vitals: incident?.vitals ?? dummyVitals(),
+      coords:
+        incident?.coords ??
+        dummyCoords(
+          location.status === 'granted'
+            ? { latitude: location.coords.latitude, longitude: location.coords.longitude }
+            : null
+        ),
+      agentReport: {
+        markdown: '',
+        timedOut: true,
+        rescueScript: null,
+        extractionRecommendation: null,
+        agentSeverity: null,
+        capturedAt: Date.now(),
+      },
+    });
+  }, [incident, location.coords, location.status, updateIncident]);
+
   const renderedScript = useMemo(() => {
     if (incident?.agentReport?.rescueScript) {
       return incident.agentReport.rescueScript;
@@ -319,19 +358,43 @@ export default function Rescue() {
           >
             RESCUE COORDINATION
           </Text>
-          <Pressable
-            onPress={() => router.dismissAll()}
-            style={{
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: C.edge,
-              backgroundColor: C.glass,
-              paddingHorizontal: 12,
-              paddingVertical: 4,
-            }}
-          >
-            <Text style={{ fontSize: 12, color: C.muted }}>Done</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              onPress={skipAgentWait}
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: 'rgba(201,138,63,0.6)',
+                backgroundColor: 'rgba(240,184,110,0.12)',
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  letterSpacing: 1.6,
+                  color: C.star,
+                  fontFamily: MONO,
+                }}
+              >
+                SKIP
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.dismissAll()}
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: C.edge,
+                backgroundColor: C.glass,
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+              }}
+            >
+              <Text style={{ fontSize: 12, color: C.muted }}>Done</Text>
+            </Pressable>
+          </View>
         </View>
 
         <Text
@@ -357,13 +420,23 @@ export default function Rescue() {
         >
           <PipelineStatus agentPhase={agentPhase} />
 
-          <ScriptCard script={renderedScript} />
-
-          <CallCard
-            phase={callPhase}
-            onCall={placeCall}
-            disabled={!incident}
-          />
+          {/*
+            The call CTA and the dispatch script only appear once the agent
+            network has settled — success, error, or explicit skip. Calling
+            dispatch while the rescue coordinator is still drafting would
+            ship the local fallback script even when a richer agent-drafted
+            one is moments away.
+          */}
+          {agentPhase.kind !== 'idle' && agentPhase.kind !== 'pending' ? (
+            <>
+              <ScriptCard script={renderedScript} />
+              <CallCard
+                phase={callPhase}
+                onCall={placeCall}
+                disabled={!incident}
+              />
+            </>
+          ) : null}
 
           {agentPhase.kind === 'success' && agentPhase.markdown ? (
             <Markdown source={agentPhase.markdown} />
