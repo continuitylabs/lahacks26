@@ -153,10 +153,9 @@ export default function TriageChat() {
     }
   }, [isListening, voice]);
 
-  // Count assistant replies that follow at least one user message. The seeded
-  // opener is ignored (no preceding user turn). Whenever this count finalises
-  // at TARGET_REPLIES, hold briefly so the user sees the meter fill, then
-  // advance.
+  // Count assistant replies that follow at least one user message. Drives
+  // the progress meter only — we never auto-advance. The user must tap
+  // Continue to leave this screen, even after the meter fills.
   const assistantRepliesAfterUser = (() => {
     let userSeen = false;
     let count = 0;
@@ -169,14 +168,6 @@ export default function TriageChat() {
     }
     return count;
   })();
-
-  useEffect(() => {
-    if (assistantRepliesAfterUser < TARGET_REPLIES) return;
-    const t = setTimeout(() => {
-      router.replace('/triage');
-    }, 800);
-    return () => clearTimeout(t);
-  }, [assistantRepliesAfterUser, router]);
 
   // Persist transcript on every change. Runs once per user send and once per
   // assistant finalisation, so an early Continue tap always finds a fresh
